@@ -1,0 +1,24 @@
+# Render Blueprint — Mega Mendikot 5v5
+# Docs: https://render.com/docs/blueprint-spec
+# To deploy: push this repo to GitHub, then go to render.com → New → Blueprint
+# and connect the repo. Render reads this file and creates the service.
+
+services:
+  - type: web
+    name: mega-mendikot
+    runtime: node
+    plan: free
+    buildCommand: "echo 'No build step — zero dependencies'"
+    startCommand: "node server/index.js"
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 18.20.4
+      - key: FILL_TIMER_MS
+        value: 20000
+      # When we add auth/database later, add these here:
+      # - key: DATABASE_URL
+      #   sync: false  # set manually in Render dashboard
+      # - key: SESSION_SECRET
+      #   generateValue: true

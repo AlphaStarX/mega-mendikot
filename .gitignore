@@ -1,0 +1,27 @@
+# Dependencies (none yet, but ready for when we add them)
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build output (when we add a build step)
+dist/
+build/

@@ -1,0 +1,449 @@
+// Mega Mendikot 5v5 — authoritative game room (master spec v1.3.0)
+// Multi-human: up to 10 humans per room, bots fill empty seats.
+// Owns the full match lifecycle: matchmaking, dealing, kitty, turn timer,
+// trump establishment, trick resolution, bot fill, win/deadlock, reconnection.
+
+import {
+  PLAYERS, HAND_SIZE, TRICKS, KITTY_SIZE, KITTY_TRICKS, WIN_TENS, TOTAL_TENS,
+  buildDeck, shuffle, dealHands, validatePlay, resolveTrickWinner, countTens,
+  autoPlayPick, teamForSeat, isTen,
+} from "../shared/rules.js";
+import { selectBotPlayCard } from "../shared/bot.js";
+
+export const TURN_SECONDS = 20;     // spec §2.9
+const BOT_DELAY_MIN_MS = 1500;      // bots "think" before playing
+const BOT_DELAY_MAX_MS = 3200;
+const RESOLVE_DELAY_MS = 2600;      // let client animate trick capture + kitty flip
+const RECONNECT_GRACE_MS = 60000;   // spec §4.4
+
+// Build the table seating: 10 alternating seats, teams A/B per §2.2/§2.10.
+function makeSeats() {
+  return Array.from({ length: PLAYERS }, (_, i) => ({
+    seat: i,
+    team: teamForSeat(i),
+    isBot: true,
+    isHuman: false,
+    sessionId: null,
+    name: `Bot ${i + 1}`,
+    hand: [],
+    cardsLeft: 0,
+    isConnected: true,
+    isAfk: false,
+    timeouts: 0,
+    tens: 0,
+    ready: false,
+    disconnectAt: null,
+  }));
+}
+
+export class GameRoom {
+  constructor(roomId) {
+    this.roomId = roomId;
+    this.seats = makeSeats();
+    this.sockets = {};           // seatIndex -> ws (only connected humans)
+    this.hostSeat = null;        // first human to join is the host
+    this.privateRoom = false;    // private rooms wait for host to start
+
+    this.matchState = "LOBBY";    // LOBBY|DEALING|PLAYING|FINISHED
+    this.hands = null;            // [...10 hands]
+    this.kitty = [];              // 12 kitty cards
+    this.kittyIdx = 0;            // next kitty card to place
+
+    this.trickNumber = 1;
+    this.leadSuit = "";
+    this.trumpSuit = "";
+    this.trumpDeclarerSeat = null;
+    this.playedCards = [];        // current trick
+    this.activeSeat = -1;
+    this.leadSeat = -1;
+    this.lastTrickWinnerTeam = null; // for 12-12 deadlock (§2.8)
+
+    this.score = { A: 0, B: 0 };
+    this.turnTime = TURN_SECONDS;
+    this.tickHandle = null;
+    this.botHandle = null;
+    this.resolveHandle = null;
+    this.graceHandles = {};       // seatIndex -> grace timer
+
+    this.log = [];
+  }
+
+  // --- human seat management ---
+  humanCount() {
+    return this.seats.filter((s) => s.isHuman && s.isConnected).length;
+  }
+
+  // Pick the next open seat, preferring to balance teams, then lowest index.
+  nextOpenSeat() {
+    const teamCounts = { A: 0, B: 0 };
+    for (const s of this.seats) if (s.isHuman) teamCounts[s.team]++;
+    // Prefer the team with fewer humans; among that team, lowest seat index that's a bot.
+    const weakerTeam = teamCounts.A <= teamCounts.B ? "A" : "B";
+    for (const s of this.seats) {
+      if (s.isBot && s.team === weakerTeam) return s.seat;
+    }
+    // Fallback: any open bot seat
+    for (const s of this.seats) if (s.isBot) return s.seat;
+    return -1;
+  }
+
+  // Add a human to an open seat. Returns seat index or -1 if full / already seated.
+  addHuman(ws, sessionId, name) {
+    // Reconnection: if this sessionId already owns a seat, reclaim it.
+    const existing = this.seats.find((s) => s.isHuman && s.sessionId === sessionId);
+    if (existing) {
+      return this.onHumanReconnect(ws, sessionId);
+    }
+    if (this.humanCount() >= PLAYERS) return -1; // room full
+    const seatIdx = this.nextOpenSeat();
+    if (seatIdx === -1) return -1;
+    const seat = this.seats[seatIdx];
+    seat.isBot = false;
+    seat.isHuman = true;
+    seat.sessionId = sessionId;
+    seat.name = name || `Player ${seatIdx + 1}`;
+    seat.isConnected = true;
+    seat.ready = false;
+    seat.isAfk = false;
+    seat.timeouts = 0;
+    this.sockets[seatIdx] = ws;
+    if (this.hostSeat === null) this.hostSeat = seatIdx;
+    this.log.push(`Human joined seat ${seatIdx} (${seat.name})`);
+    return seatIdx;
+  }
+
+  setReady(seatIdx, ready) {
+    if (this.seats[seatIdx]) this.seats[seatIdx].ready = !!ready;
+  }
+
+  start() {
+    if (this.matchState !== "LOBBY") return false;
+    // Ensure all non-human seats are bots (they already are from makeSeats)
+    this.matchState = "DEALING";
+    this.log.push("Match starting: dealing 192-card deck.");
+
+    const deck = shuffle(buildDeck());
+    const { hands, kitty } = dealHands(deck);
+    this.hands = hands;
+    this.kitty = kitty;
+    for (let i = 0; i < PLAYERS; i++) {
+      this.seats[i].hand = hands[i];
+      this.seats[i].cardsLeft = HAND_SIZE;
+    }
+
+    // Spec §2.4: lead selection from a separate shuffled selection deck.
+    const sel = shuffle(buildDeck()).slice(0, PLAYERS).map((c) => c.rank);
+    let lead = 0, max = -1;
+    for (let i = 0; i < PLAYERS; i++) if (sel[i] > max) { max = sel[i]; lead = i; }
+    this.leadSeat = lead;
+    this.activeSeat = lead;
+    this.matchState = "PLAYING";
+    this.log.push(`Lead selection: seat ${lead} (rank ${max}) leads trick 1.`);
+
+    // Send each human their personalized view (fog of war — §3.4)
+    for (const s of this.seats) if (s.isHuman) this.sendInitTo(s.seat);
+    this.startTurnTimer();
+    this.maybeScheduleBot();
+    return true;
+  }
+
+  // --- turn timer (spec §2.9) ---
+  startTurnTimer() {
+    this.stopTurnTimer();
+    this.turnTime = TURN_SECONDS;
+    this.tickHandle = setInterval(() => this.tick(), 1000);
+  }
+  stopTurnTimer() {
+    if (this.tickHandle) { clearInterval(this.tickHandle); this.tickHandle = null; }
+  }
+  tick() {
+    if (this.matchState !== "PLAYING") return;
+    this.turnTime--;
+    if (this.turnTime === 5) this.broadcast({ t: "turnWarning", seat: this.activeSeat });
+    if (this.turnTime <= 0) {
+      this.log.push(`Time expired for seat ${this.activeSeat} — auto-play.`);
+      this.handleTimeout();
+    }
+  }
+
+  handleTimeout() {
+    const seat = this.seats[this.activeSeat];
+    seat.timeouts++;
+    if (seat.timeouts >= 2) seat.isAfk = true;
+    const card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
+    this.playCard(this.activeSeat, card.id, /*auto=*/true);
+  }
+
+  maybeScheduleBot() {
+    this.clearBot();
+    const seat = this.seats[this.activeSeat];
+    if (!seat || seat.isBot || (seat.isHuman && !seat.isConnected) || seat.isAfk) {
+      // Bot turn, or human is disconnected/AFK -> takeover
+      const delay = seat.isHuman
+        ? BOT_DELAY_MIN_MS
+        : Math.floor(BOT_DELAY_MIN_MS + Math.random() * (BOT_DELAY_MAX_MS - BOT_DELAY_MIN_MS));
+      this.broadcast({ t: "botThinking", seat: this.activeSeat });
+      this.botHandle = setTimeout(() => this.botPlay(), delay);
+    }
+  }
+  clearBot() { if (this.botHandle) { clearTimeout(this.botHandle); this.botHandle = null; } }
+
+  botPlay() {
+    if (this.matchState !== "PLAYING") return;
+    const seatIdx = this.activeSeat;
+    const seat = this.seats[seatIdx];
+    if (!seat.hand.length) return;
+    const trick = { leadSuit: this.leadSuit, playedCards: this.playedCards };
+    const seatsView = this.seats.map((s) => ({ team: s.team }));
+    const card = selectBotPlayCard(
+      seat.hand, trick, seatIdx, this.trumpSuit, seatsView, this.score.A, this.score.B
+    );
+    this.playCard(seatIdx, card.id, /*auto=*/true);
+  }
+
+  // --- human action entry (multi-human: resolved by seat) ---
+  onPlayCardFromSeat(seatIdx, cardId) {
+    if (this.matchState !== "PLAYING") return this.sendErrorTo(seatIdx, "Match not in play.");
+    if (this.activeSeat !== seatIdx) return this.sendErrorTo(seatIdx, "Not your turn.");
+    const seat = this.seats[seatIdx];
+    const card = seat.hand.find((c) => c.id === cardId);
+    if (!card) return this.sendErrorTo(seatIdx, "Card not in your hand.");
+    if (!validatePlay(card, seat.hand, this.leadSuit)) {
+      return this.sendErrorTo(seatIdx, `You must follow the lead suit (${this.leadSuit}).`);
+    }
+    seat.timeouts = 0; // manual play clears AFK path
+    if (seat.isAfk) { seat.isAfk = false; seat.timeouts = 0; }
+    this.clearBot();
+    this.playCard(seatIdx, cardId, /*auto=*/false);
+  }
+
+  // --- core play-card executor ---
+  playCard(seatIdx, cardId, auto) {
+    const seat = this.seats[seatIdx];
+    const idx = seat.hand.findIndex((c) => c.id === cardId);
+    if (idx === -1) return;
+    const card = seat.hand.splice(idx, 1)[0];
+    seat.cardsLeft = seat.hand.length;
+    const played = { seat: seatIdx, card, playOrder: this.playedCards.length };
+    this.playedCards.push(played);
+
+    // Establish lead suit on first play of trick
+    if (this.playedCards.length === 1) this.leadSuit = card.suit;
+
+    // Establish trump (spec §2.6): first legal off-suit sets trump permanently
+    if (!this.trumpSuit && this.leadSuit && card.suit !== this.leadSuit) {
+      this.trumpSuit = card.suit;
+      this.trumpDeclarerSeat = seatIdx;
+      this.log.push(`Trump established: ${this.trumpSuit} by seat ${seatIdx}.`);
+      this.broadcast({ t: "trumpDeclared", suit: this.trumpSuit, seat: seatIdx });
+    }
+
+    this.broadcast({ t: "played", seat: seatIdx, card: this.cardView(card), playOrder: played.playOrder, auto });
+
+    if (this.playedCards.length < PLAYERS) {
+      this.activeSeat = (this.activeSeat + 1) % PLAYERS;
+      this.turnTime = TURN_SECONDS;
+      this.maybeScheduleBot();
+    } else {
+      this.resolveTrick();
+    }
+  }
+
+  // --- resolve completed trick (spec §2.7, §2.3 kitty, §2.8 win/deadlock) ---
+  resolveTrick() {
+    this.stopTurnTimer();
+    this.clearBot();
+    this.activeSeat = -1; // block plays during resolution animation
+
+    const winner = resolveTrickWinner(this.playedCards, this.leadSuit, this.trumpSuit);
+    const winSeat = winner.seat;
+    const winTeam = this.seats[winSeat].team;
+    this.lastTrickWinnerTeam = winTeam;
+
+    // Tens captured from played cards
+    let tens = countTens(this.playedCards.map((p) => p.card));
+    this.seats[winSeat].tens += tens;
+
+    // Kitty reveal over first 12 tricks (spec §2.3)
+    let kittyCard = null, kittyTen = 0;
+    if (this.trickNumber <= KITTY_TRICKS && this.kittyIdx < this.kitty.length) {
+      kittyCard = this.kitty[this.kittyIdx++];
+      if (isTen(kittyCard)) kittyTen = 1;
+      tens += kittyTen;
+      this.score[winTeam] += kittyTen;
+      this.log.push(`Kitty reveal trick ${this.trickNumber}: ${this.cardView(kittyCard).label} -> team ${winTeam}.`);
+    }
+    this.score[winTeam] += tens - kittyTen; // played tens counted above under team only once
+
+    this.broadcast({
+      t: "trickWon",
+      winnerSeat: winSeat,
+      team: winTeam,
+      tens,
+      kittyCard: kittyCard ? this.cardView(kittyCard) : null,
+      cards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card) })),
+      score: this.score,
+      trickNumber: this.trickNumber,
+    });
+    this.log.push(`Trick ${this.trickNumber} won by seat ${winSeat} (team ${winTeam}); +${tens} tens.`);
+
+    // Immediate win check (§2.8) — kitty tens included
+    if (this.score.A >= WIN_TENS || this.score.B >= WIN_TENS) {
+      return this.endMatch(this.score.A >= WIN_TENS ? "A" : "B");
+    }
+
+    // All tricks played?
+    if (this.trickNumber >= TRICKS) {
+      // 12-12 deadlock (§2.8): last-trick winner takes it
+      if (this.score.A === this.score.B) {
+        this.log.push(`12-12 deadlock resolved by last-trick winner: team ${this.lastTrickWinnerTeam}.`);
+        return this.endMatch(this.lastTrickWinnerTeam);
+      }
+      return this.endMatch(this.score.A > this.score.B ? "A" : "B");
+    }
+
+    // Schedule next trick
+    this.resolveHandle = setTimeout(() => {
+      this.playedCards = [];
+      this.leadSuit = "";
+      this.trickNumber++;
+      this.activeSeat = winSeat;
+      this.leadSeat = winSeat;
+      this.broadcast({
+        t: "trickStart",
+        trickNumber: this.trickNumber,
+        leadSeat: winSeat,
+        kittyActive: this.trickNumber <= KITTY_TRICKS && this.kittyIdx < this.kitty.length,
+        kittyLeft: KITTY_SIZE - this.kittyIdx,
+      });
+      this.startTurnTimer();
+      this.maybeScheduleBot();
+    }, RESOLVE_DELAY_MS);
+  }
+
+  endMatch(winningTeam) {
+    this.stopTurnTimer();
+    this.clearBot();
+    if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
+    this.matchState = "FINISHED";
+    this.broadcast({
+      t: "matchEnd",
+      winningTeam,
+      score: this.score,
+      seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot })),
+    });
+    this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
+  }
+
+  // --- reconnection (spec §4.4) ---
+  onHumanDisconnect(seatIdx) {
+    const seat = this.seats[seatIdx];
+    if (!seat || !seat.isHuman) return;
+    seat.isConnected = false;
+    seat.disconnectAt = Date.now();
+    delete this.sockets[seatIdx];
+    if (this.matchState !== "PLAYING") return;
+    if (this.activeSeat === seatIdx) this.maybeScheduleBot();
+    // grace timer: after RECONNECT_GRACE_MS, seat stays bot-controlled (no penalty)
+    if (this.graceHandles[seatIdx]) clearTimeout(this.graceHandles[seatIdx]);
+    this.graceHandles[seatIdx] = setTimeout(() => {
+      this.log.push(`Reconnection grace expired for seat ${seatIdx}.`);
+      delete this.graceHandles[seatIdx];
+    }, RECONNECT_GRACE_MS);
+  }
+
+  onHumanReconnect(ws, sessionId) {
+    const seat = this.seats.find((s) => s.isHuman && s.sessionId === sessionId);
+    if (!seat) return -1;
+    const seatIdx = seat.seat;
+    if (this.graceHandles[seatIdx]) { clearTimeout(this.graceHandles[seatIdx]); delete this.graceHandles[seatIdx]; }
+    this.sockets[seatIdx] = ws;
+    seat.isConnected = true;
+    seat.isAfk = false;
+    seat.timeouts = 0;
+    seat.disconnectAt = null;
+    this.log.push(`Human reconnected to seat ${seatIdx}; state re-synced.`);
+    if (this.matchState === "PLAYING") {
+      this.sendInitTo(seatIdx); // re-sync full state on reconnection
+    }
+    return seatIdx;
+  }
+
+  // --- lobby state broadcast (sent to all humans in the room) ---
+  broadcastLobby() {
+    const lobby = {
+      t: "lobbyUpdate",
+      room: this.roomId,
+      hostSeat: this.hostSeat,
+      matchState: this.matchState,
+      privateRoom: this.privateRoom,
+      seats: this.seats.map((s) => ({
+        seat: s.seat, team: s.team, name: s.name, isBot: s.isBot,
+        isConnected: s.isConnected, ready: s.ready,
+      })),
+    };
+    this.broadcast(lobby);
+  }
+
+  // --- network helpers ---
+  cardView(card) {
+    return { id: card.id, suit: card.suit, rank: card.rank, label: cardLabel(card) };
+  }
+
+  // Per-recipient init: each human sees only their own hand (fog of war §3.4)
+  sendInitTo(seatIdx) {
+    const ws = this.sockets[seatIdx];
+    if (!ws) return;
+    safeSend(ws, {
+      t: "init",
+      room: this.roomId,
+      you: seatIdx,
+      seats: this.seats.map((s) => ({
+        seat: s.seat, team: s.team, name: s.name, isBot: s.isBot, cardsLeft: s.cardsLeft,
+      })),
+      hand: this.seats[seatIdx].hand.map((c) => this.cardView(c)),
+      kittySize: KITTY_SIZE,
+      kittyLeft: KITTY_SIZE - this.kittyIdx,
+      kittyActive: this.trickNumber <= KITTY_TRICKS && this.kittyIdx < this.kitty.length,
+      trickNumber: this.trickNumber,
+      leadSuit: this.leadSuit,
+      trumpSuit: this.trumpSuit,
+      trumpDeclarerSeat: this.trumpDeclarerSeat,
+      activeSeat: this.activeSeat,
+      leadSeat: this.leadSeat,
+      score: this.score,
+      turnTime: this.turnTime,
+      playedCards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card), playOrder: p.playOrder })),
+      totalTens: TOTAL_TENS,
+      winTens: WIN_TENS,
+      _ts: Date.now(),
+    });
+  }
+
+  // Fan out to all connected human sockets
+  broadcast(msg) {
+    const data = { ...msg, _ts: Date.now() };
+    for (const seatIdx in this.sockets) safeSend(this.sockets[seatIdx], data);
+  }
+  sendErrorTo(seatIdx, message) { safeSend(this.sockets[seatIdx], { t: "error", message }); }
+
+  // Clean up all timers (used when the room is destroyed)
+  clearTimers() {
+    this.stopTurnTimer();
+    this.clearBot();
+    if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
+    for (const k in this.graceHandles) clearTimeout(this.graceHandles[k]);
+    this.graceHandles = {};
+  }
+}
+
+function cardLabel(card) {
+  const rankName = { 7: "7", 8: "8", 9: "9", 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A" };
+  const suitGlyph = { SPADES: "♠", HEARTS: "♥", DIAMONDS: "♦", CLUBS: "♣" };
+  return `${rankName[card.rank]}${suitGlyph[card.suit]}`;
+}
+function safeSend(ws, msg) {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify(msg));
+  }
+}

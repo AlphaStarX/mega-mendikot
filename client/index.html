@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Mega Mendikot 5v5</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Join / lobby menu screen -->
+    <section id="join-screen" class="screen">
+      <div class="card-panel">
+        <h1>♠ Mega Mendikot <span class="red">5v5</span> ♣</h1>
+        <p class="tag">192 cards · 2 teams · 24 Tens · race to 13</p>
+        <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
+        <div class="menu-buttons">
+          <button id="quick-btn" class="primary">Quick Match</button>
+          <button id="create-btn">Create Private Room</button>
+        </div>
+        <div class="join-code-row">
+          <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
+          <button id="join-code-btn">Join</button>
+        </div>
+        <p class="hint">Quick Match fills empty seats with bots so you can play instantly. Open this page in two tabs to play against yourself.</p>
+      </div>
+    </section>
+
+    <!-- Pre-game lobby screen -->
+    <section id="lobby-screen" class="screen hidden">
+      <div class="card-panel lobby-panel">
+        <h2>Room <span id="lobby-code" class="room-code"></span></h2>
+        <p id="lobby-link-wrap" class="hint"></p>
+        <div id="lobby-seats" class="lobby-seats"></div>
+        <div class="lobby-actions">
+          <button id="lobby-start-btn" class="primary hidden">Start Game</button>
+          <p id="lobby-waiting" class="hint hidden">Waiting for host to start…</p>
+        </div>
+        <button id="lobby-leave-btn" class="link-btn">Leave</button>
+      </div>
+    </section>
+
+    <!-- Game screen -->
+    <section id="game-screen" class="screen hidden">
+      <header id="hud">
+        <div class="score team-a"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
+        <div class="center-info">
+          <div id="trump-info" class="trump-info">Trump: <b id="trump-display">—</b></div>
+          <div id="lead-info" class="info-line hidden">Lead: <b id="lead-display">—</b></div>
+          <div id="trick-info">Trick <b id="trick-num">1</b>/18</div>
+        </div>
+        <div class="score team-b">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
+      </header>
+
+      <div id="table-wrap">
+        <div id="table">
+          <div id="center">
+            <div id="played-cards"></div>
+            <div id="kitty-display" class="hidden">
+              <div class="kitty-label">Kitty</div>
+              <div id="kitty-card" class="kitty-card">
+                <div class="kitty-face kitty-back">?</div>
+                <div class="kitty-face kitty-front"></div>
+              </div>
+              <div id="kitty-count" class="kitty-count"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer id="hand-wrap">
+        <div id="hand-label">Your hand (click a card to play)</div>
+        <div id="hand"></div>
+        <div id="msg-bar" class="msg-bar hidden"></div>
+      </footer>
+    </section>
+
+    <!-- End screen -->
+    <section id="end-screen" class="screen hidden">
+      <div class="card-panel">
+        <h1 id="end-title">Match Over</h1>
+        <p id="end-score"></p>
+        <div id="end-breakdown"></div>
+        <button id="rematch-btn" class="primary">Play Again</button>
+      </div>
+    </section>
+  </div>
+  <script src="/client.js"></script>
+</body>
+</html>

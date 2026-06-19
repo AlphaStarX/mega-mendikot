@@ -1,0 +1,14 @@
+{
+  "name": "mega-mendikot-5v5",
+  "version": "1.3.0",
+  "description": "Mega Mendikot 5v5 — team trick-taking card game (self-contained build, master spec v1.3.0)",
+  "private": true,
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}
