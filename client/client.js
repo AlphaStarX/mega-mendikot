@@ -37,6 +37,10 @@ function getSessionId() {
   return id;
 }
 
+// --- account auth token (localStorage = persists across tabs/sessions = cross-device) ---
+function getToken() { return localStorage.getItem("mm_token"); }
+function setToken(t) { if (t) localStorage.setItem("mm_token", t); else localStorage.removeItem("mm_token"); }
+
 const state = {
   ws: null,
   you: null,
@@ -61,26 +65,46 @@ const state = {
   voiceConnected: false,
   voiceMuted: false,
   voiceMutedSeats: {}, // seat -> bool (teammate mute indicators)
+  // --- account auth (Phase 1) ---
+  userId: null,
+  userName: null,      // display name from the account (if logged in)
+  token: getToken(),
+  authenticated: false,
+  authPending: null,   // deferred join waiting for auth to resolve
   // lobby
   room: null,
   hostSeat: null,
   pendingMode: null,
   pendingRoomId: null,
+  pendingName: null,   // guest name to send with join
 };
 
 // ---------- connection ----------
+// Opens the socket. If we have a stored token, we authenticate first and defer
+// the `join` until the server confirms (so an authenticated user reclaims by
+// their stable DB id). Guests send join immediately on open.
 function connect(name, opts = {}) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   state.ws = new WebSocket(`${proto}://${location.host}/ws`);
   state.pendingMode = opts.mode || "quick";
   state.pendingRoomId = opts.roomId || null;
-  state.ws.onopen = () => send({
-    t: "join",
-    name,
-    mode: state.pendingMode,
-    roomId: state.pendingRoomId,
-    sessionId: getSessionId(),
-  });
+  state.pendingName = name;
+  state.ws.onopen = () => {
+    if (state.token) {
+      // Defer join until authenticate resolves; send it now.
+      state.authPending = { name, mode: state.pendingMode, roomId: state.pendingRoomId };
+      send({ t: "authenticate", token: state.token });
+      // Safety fallback: if no authOk within 3s, proceed as guest.
+      clearTimeout(state._authFallback);
+      state._authFallback = setTimeout(() => {
+        if (state.authPending) {
+          const p = state.authPending; state.authPending = null;
+          sendJoin(p.name, p.mode, p.roomId);
+        }
+      }, 3000);
+    } else {
+      sendJoin(name, state.pendingMode, state.pendingRoomId);
+    }
   state.ws.onmessage = (ev) => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     handle(m);
@@ -94,6 +118,17 @@ function connect(name, opts = {}) {
   };
 }
 
+// Send the join message (extracted so auth can defer it).
+function sendJoin(name, mode, roomId) {
+  send({
+    t: "join",
+    name,
+    mode,
+    roomId,
+    sessionId: getSessionId(),
+  });
+}
+
 function send(obj) {
   if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(obj));
 }
@@ -101,6 +136,10 @@ function send(obj) {
 function handle(m) {
   switch (m.t) {
     case "hello": break;
+    case "authOk": onAuthOk(m); break;
+    case "authError": onAuthError(m); break;
+    case "authDisabled": onAuthDisabled(m); break;
+    case "loggedOut": onLoggedOut(); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
     case "init": onInit(m); break;
     case "trickStart": onTrickStart(m); break;
@@ -114,6 +153,73 @@ function handle(m) {
     case "voiceEnd": disconnectVoice(); break;
     case "error": showMsg(m.message); break;
   }
+}
+
+// ---------- account auth (Phase 1) ----------
+function onAuthOk(m) {
+  state.token = m.token;
+  state.userId = m.userId;
+  state.userName = m.name;
+  state.authenticated = true;
+  setToken(m.token);
+  clearTimeout(state._authFallback);
+  // If we were waiting to join (connect deferred auth), send the join now.
+  if (state.authPending) {
+    const p = state.authPending; state.authPending = null;
+    sendJoin(p.name, p.mode, p.roomId);
+  }
+  refreshAuthUI();
+}
+
+function onAuthError(m) {
+  // A failed login/signup attempt from the auth screen.
+  showAuthMsg(m.message || "Authentication failed.");
+}
+
+function onAuthDisabled(m) {
+  // Server has accounts off (no DB/JWT configured). Drop any pending token,
+  // proceed as guest, and tell the user.
+  setToken(null);
+  state.token = null;
+  state.authenticated = false;
+  clearTimeout(state._authFallback);
+  if (state.authPending) {
+    const p = state.authPending; state.authPending = null;
+    sendJoin(p.name, p.mode, p.roomId);
+  }
+  showAuthMsg(m.message || "Accounts aren't enabled on this server.");
+}
+
+function onLoggedOut() {
+  setToken(null);
+  state.token = null;
+  state.userId = null;
+  state.userName = null;
+  state.authenticated = false;
+  refreshAuthUI();
+  showScreen("join-screen");
+}
+
+// Send a signup request over an open socket. Opens one if needed.
+function doSignup(email, password, name) {
+  openAuthSocketIfNeeded();
+  send({ t: "signup", email, password, name });
+}
+function doLogin(email, password) {
+  openAuthSocketIfNeeded();
+  send({ t: "login", email, password });
+}
+function doLogout() {
+  if (state.ws && state.ws.readyState === 1) send({ t: "logout" });
+  else onLoggedOut();
+}
+
+// The auth screen uses its own short-lived socket (not the game connect()).
+function openAuthSocketIfNeeded() {
+  if (state.ws && state.ws.readyState === 1) return;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  state.ws = new WebSocket(`${proto}://${location.host}/ws`);
+  state.ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handle(m); };
 }
 
 // ---------- lobby ----------
@@ -400,8 +506,56 @@ function onMatchEnd(m) {
 
 // ---------- rendering ----------
 function showScreen(id) {
-  ["join-screen", "lobby-screen", "game-screen", "end-screen"].forEach((s) => $(s).classList.add("hidden"));
+  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
+}
+
+// ---------- auth UI helpers (Phase 1) ----------
+// Reflects login state on the main menu: shows the logged-in name + logout, or
+// the "Log in / Sign up" buttons for guests.
+function refreshAuthUI() {
+  const welcome = $("auth-welcome");
+  const guestActions = $("auth-guest-actions");
+  if (state.authenticated && state.userName) {
+    if (welcome) {
+      welcome.classList.remove("hidden");
+      welcome.innerHTML = `Signed in as <b>${state.userName}</b> · <a href="#" id="logout-link">Log out</a>`;
+      const link = $("logout-link");
+      if (link) link.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
+    }
+    if (guestActions) guestActions.classList.add("hidden");
+    // Prefill the name field with the account name so guests don't have to type it.
+    const nameInput = $("name-input");
+    if (nameInput && !nameInput.value.trim()) nameInput.value = state.userName;
+  } else {
+    if (welcome) welcome.classList.add("hidden");
+    if (guestActions) guestActions.classList.remove("hidden");
+  }
+}
+
+function showAuthMsg(text) {
+  const bar = $("auth-msg");
+  if (!bar) { showMsg(text); return; }
+  bar.textContent = text;
+  bar.classList.remove("hidden");
+  clearTimeout(showAuthMsg._t);
+  showAuthMsg._t = setTimeout(() => bar.classList.add("hidden"), 4000);
+}
+
+// Toggle the auth form between login and signup modes.
+function setAuthMode(mode) {
+  const isSignup = mode === "signup";
+  const nameField = $("auth-name-wrap");
+  if (nameField) nameField.classList.toggle("hidden", !isSignup);
+  const btn = $("auth-submit-btn");
+  if (btn) btn.textContent = isSignup ? "Create account" : "Log in";
+  const toggle = $("auth-mode-toggle");
+  if (toggle) toggle.innerHTML = isSignup
+    ? `Already have an account? <a href="#" id="auth-switch">Log in</a>`
+    : `New here? <a href="#" id="auth-switch">Sign up</a>`;
+  const sw = $("auth-switch");
+  if (sw) sw.addEventListener("click", (e) => { e.preventDefault(); setAuthMode(isSignup ? "login" : "signup"); });
+  if ($("auth-msg")) $("auth-msg").classList.add("hidden");
 }
 
 function renderSeats() {
@@ -616,6 +770,26 @@ $("rematch-btn").addEventListener("click", () => {
 // Voice mic toggle (match-only; button is hidden until voice connects).
 $("voice-toggle").addEventListener("click", toggleVoiceMute);
 
+// --- Auth screen wiring (Phase 1) ---
+$("login-btn").addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });
+$("signup-btn").addEventListener("click", () => { setAuthMode("signup"); showScreen("auth-screen"); $("auth-email").focus(); });
+$("auth-guest-btn").addEventListener("click", () => showScreen("join-screen"));
+$("auth-submit-btn").addEventListener("click", () => {
+  const email = $("auth-email").value.trim();
+  const password = $("auth-password").value;
+  const name = $("auth-name").value.trim();
+  const mode = ($("auth-submit-btn").textContent || "").includes("Create") ? "signup" : "login";
+  if (!email || !password) { showAuthMsg("Enter your email and password."); return; }
+  if (mode === "signup") {
+    if (!name) { showAuthMsg("Choose a display name."); return; }
+    doSignup(email, password, name);
+  } else {
+    doLogin(email, password);
+  }
+});
+$("auth-password").addEventListener("keydown", (e) => { if (e.key === "Enter") $("auth-submit-btn").click(); });
+$("auth-email").addEventListener("keydown", (e) => { if (e.key === "Enter") $("auth-password").focus(); });
+
 // Chat send wiring
 $("chat-send").addEventListener("click", sendChat);
 $("chat-input").addEventListener("keydown", (e) => {
@@ -632,5 +806,15 @@ if (params.get("room")) {
   $("code-input").value = params.get("room").toUpperCase();
 }
 
+// On load: if we have a stored token, silently validate it against the server
+// so the menu shows the right logged-in state. Game play still works either way.
+refreshAuthUI();
 showScreen("join-screen");
 $("name-input").focus();
+if (state.token) {
+  // Open a throwaway socket just to validate the token; connect() will reopen
+  // when the user actually joins a game.
+  openAuthSocketIfNeeded();
+  if (state.ws.readyState === 1) send({ t: "authenticate", token: state.token });
+  else state.ws.onopen = () => send({ t: "authenticate", token: state.token });
+}

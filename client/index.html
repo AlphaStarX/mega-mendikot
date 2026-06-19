@@ -13,6 +13,7 @@
       <div class="card-panel">
         <h1>♠ Mega Mendikot <span class="red">5v5</span> ♣</h1>
         <p class="tag">192 cards · 2 teams · 24 Tens · race to 13</p>
+        <p id="auth-welcome" class="auth-welcome hidden"></p>
         <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
         <div class="menu-buttons">
           <button id="quick-btn" class="primary">Quick Match</button>
@@ -23,6 +24,28 @@
           <button id="join-code-btn">Join</button>
         </div>
         <p class="hint">Quick Match fills empty seats with bots so you can play instantly. Open this page in two tabs to play against yourself.</p>
+        <div id="auth-guest-actions" class="auth-guest-actions">
+          <button id="login-btn" class="link-btn">Log in</button>
+          <span class="auth-sep">·</span>
+          <button id="signup-btn" class="link-btn">Sign up</button>
+          <p class="hint tiny">Create an account to keep your name, stats, and reconnect from any device.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Login / signup screen -->
+    <section id="auth-screen" class="screen hidden">
+      <div class="card-panel">
+        <h2 id="auth-title">Log in</h2>
+        <div id="auth-name-wrap" class="hidden">
+          <input id="auth-name" type="text" maxlength="20" placeholder="Display name" autocomplete="username" />
+        </div>
+        <input id="auth-email" type="email" maxlength="254" placeholder="Email" autocomplete="email" />
+        <input id="auth-password" type="password" maxlength="200" placeholder="Password (min 8 chars)" autocomplete="current-password" />
+        <p id="auth-msg" class="auth-msg hidden"></p>
+        <button id="auth-submit-btn" class="primary">Log in</button>
+        <p id="auth-mode-toggle" class="hint"></p>
+        <button id="auth-guest-btn" class="link-btn">← Back</button>
       </div>
     </section>
 

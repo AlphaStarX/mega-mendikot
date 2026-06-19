@@ -13,6 +13,11 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 import { GameRoom, TURN_SECONDS } from "./game-room.js";
+import {
+  authConfigured, validateSignup, cleanName, normalizeEmail,
+  hashPassword, verifyPassword, signToken, verifyToken,
+} from "./auth.js";
+import { getDb, closeDb } from "./db.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -71,7 +76,11 @@ server.on("upgrade", (req, socket) => {
 });
 
 function makeWs(socket) {
-  const ws = { socket, readyState: 1, OPEN: 1, CLOSED: 3, _listeners: {}, sessionId: null, room: null, seat: null };
+  const ws = {
+    socket, readyState: 1, OPEN: 1, CLOSED: 3, _listeners: {},
+    sessionId: null, room: null, seat: null,
+    userId: null, userName: null, authenticated: false,  // account auth (Phase 1)
+  };
   ws.on = (ev, fn) => { (ws._listeners[ev] ||= []).push(fn); };
   ws._emit = (ev, ...a) => (ws._listeners[ev] || []).forEach((fn) => fn(...a));
   ws.send = (data) => {
@@ -222,6 +231,10 @@ wss.on("connection", (ws) => {
 
 function handleMessage(ws, msg) {
   switch (msg.t) {
+    case "signup": handleSignup(ws, msg); break;
+    case "login": handleLogin(ws, msg); break;
+    case "authenticate": handleAuthenticate(ws, msg); break;
+    case "logout": handleLogout(ws); break;
     case "join": handleJoin(ws, msg); break;
     case "play":
       if (ws.room && ws.seat !== null) ws.room.onPlayCardFromSeat(ws.seat, msg.cardId);
@@ -262,10 +275,95 @@ function handleMessage(ws, msg) {
   }
 }
 
+// --- account auth handlers (Phase 1) ---
+// All auth flows run over the same WebSocket as the game. Fail-soft: if auth
+// isn't configured (JWT_SECRET / DATABASE_URL unset), every handler replies
+// authDisabled and the game plays anonymously exactly as before.
+
+function authReplyOk(ws, user) {
+  const token = signToken({ userId: user.id, email: user.email });
+  ws.userId = user.id;
+  ws.userName = user.displayName;
+  ws.authenticated = true;
+  send(ws, { t: "authOk", token, userId: user.id, name: user.displayName });
+}
+
+function handleSignup(ws, msg) {
+  if (!authConfigured()) { send(ws, { t: "authDisabled", message: "Accounts are not enabled on this server." }); return; }
+  const email = normalizeEmail(msg && msg.email);
+  const password = (msg && msg.password) || "";
+  const name = cleanName((msg && msg.name) || "");
+  const err = validateSignup({ email, password, name });
+  if (err) { send(ws, { t: "authError", message: err }); return; }
+  const db = getDb();
+  db.user.findUnique({ where: { email } })
+    .then((existing) => {
+      if (existing) { send(ws, { t: "authError", message: "An account with that email already exists." }); return null; }
+      return hashPassword(password).then(({ passwordHash, passwordSalt }) =>
+        db.user.create({ data: { email, passwordHash, passwordSalt, displayName: name } })
+      );
+    })
+    .then((user) => { if (user) authReplyOk(ws, user); })
+    .catch((e) => {
+      send(ws, { t: "authError", message: "Signup failed. Please try again." });
+      console.error("signup error:", e);
+    });
+}
+
+function handleLogin(ws, msg) {
+  if (!authConfigured()) { send(ws, { t: "authDisabled", message: "Accounts are not enabled on this server." }); return; }
+  const email = normalizeEmail(msg && msg.email);
+  const password = (msg && msg.password) || "";
+  if (!email || !password) { send(ws, { t: "authError", message: "Enter your email and password." }); return; }
+  const db = getDb();
+  db.user.findUnique({ where: { email } })
+    .then((user) => {
+      if (!user) { send(ws, { t: "authError", message: "No account found with that email." }); return null; }
+      return verifyPassword(password, user.passwordHash, user.passwordSalt).then((ok) => (ok ? user : null));
+    })
+    .then((user) => {
+      if (!user) { send(ws, { t: "authError", message: "Incorrect password." }); return; }
+      authReplyOk(ws, user);
+    })
+    .catch((e) => {
+      send(ws, { t: "authError", message: "Login failed. Please try again." });
+      console.error("login error:", e);
+    });
+}
+
+// Restore a session from a stored token on (re)connect — silent, no error if invalid.
+function handleAuthenticate(ws, msg) {
+  if (!authConfigured()) return; // silently stay anonymous
+  const token = msg && msg.token;
+  const payload = verifyToken(token);
+  if (!payload) return; // bad/expired token — stay anonymous; client falls back to guest
+  const db = getDb();
+  db.user.findUnique({ where: { id: payload.userId } })
+    .then((user) => {
+      if (!user) return; // user deleted since token issued
+      ws.userId = user.id;
+      ws.userName = user.displayName;
+      ws.authenticated = true;
+      send(ws, { t: "authOk", token, userId: user.id, name: user.displayName });
+    })
+    .catch((e) => console.error("authenticate error:", e));
+}
+
+function handleLogout(ws) {
+  ws.userId = null;
+  ws.userName = null;
+  ws.authenticated = false;
+  send(ws, { t: "loggedOut" });
+}
+
 function handleJoin(ws, msg) {
-  const name = ((msg && msg.name) || "").toString().slice(0, 20) || "Player";
-  const sessionId = (msg && msg.sessionId) || crypto.randomBytes(6).toString("hex");
+  // Authenticated users reclaim their seat by their stable DB user id (cross-device);
+  // anonymous guests keep today's behavior with a random sessionId.
+  const sessionId = ws.userId || (msg && msg.sessionId) || crypto.randomBytes(6).toString("hex");
   ws.sessionId = sessionId;
+  // Authenticated users' display name comes from their account (can't be spoofed);
+  // guests use whatever they typed.
+  const name = ws.userName || cleanName((msg && msg.name) || "") || "Player";
   const mode = (msg && msg.mode) || "quick";
   const requestedRoom = (msg && msg.roomId) || null;
 
@@ -313,5 +411,13 @@ server.listen(PORT, HOST, () => {
   console.log(`\n  ♠♥♦♣  Mega Mendikot 5v5  ♠♥♦♣`);
   console.log(`  → http://localhost:${PORT}`);
   console.log(`  WebSocket: ws://localhost:${PORT}/ws`);
-  console.log(`  Multi-room (quick-match fill: ${FILL_TIMER_MS}ms)\n`);
+  console.log(`  Multi-room (quick-match fill: ${FILL_TIMER_MS}ms)`);
+  console.log(`  Accounts: ${authConfigured() ? "enabled (Postgres + JWT)" : "disabled (guest-only)"}\n`);
 });
+
+// Close the DB connection pool cleanly on shutdown so the process exits promptly.
+function shutdown() {
+  closeDb().finally(() => process.exit(0));
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);

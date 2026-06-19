@@ -1,30 +1,44 @@
 # Mega Mendikot 5v5 — container image.
-# The app is zero-dependency (hand-rolled WebSocket server over node:http), so the
-# image is tiny: just Node + the source files, no npm install step.
+#
+# The game server itself is hand-rolled (custom WebSocket server over node:http,
+# no framework); auth crypto is zero-dependency (scrypt + HS256 via node:crypto).
+# Postgres is the ONE intentional runtime dependency. The image therefore runs a
+# real `npm ci` (for @prisma/client + pg) and generates the Prisma client.
 #
 # Usage:
 #   docker build -t mega-mendikot .
-#   docker run -p 3000:3000 -e PORT=3000 mega-mendikot
+#   docker run -p 3000:3000 -e DATABASE_URL=... -e JWT_SECRET=... mega-mendikot
 
 FROM node:20-alpine
 
-# Run as a non-root user for a slightly smaller attack surface.
+# openssl is needed by the Prisma query engine on alpine.
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
-# Server reads PORT from env (default 3000) and binds 0.0.0.0.
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0
 
-# Copy only what the runtime needs: server + shared modules + the static client.
-# No package*.json install is performed — there are zero runtime deps.
+# Install deps + generate the Prisma client BEFORE copying source (layer cache).
+# Copy only what the install/generate needs.
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma
+RUN npm ci
+RUN npx prisma generate
+
+# Copy the app source: server + shared modules + the static client.
 COPY server/ ./server/
 COPY shared/ ./shared/
 COPY client/ ./client/
-COPY package.json ./package.json
 
 EXPOSE 3000
 
-# node:alpine defaults to root; drop to the built-in 'node' user.
+# Drop to the built-in non-root user. node_modules/.prisma is owned by root from
+# the RUN above, but it only needs to be READ by the node user at runtime (the
+# engine cache lands in /home/node/.cache which alpine's node user owns).
 USER node
-CMD ["node", "server/index.js"]
+
+# Apply pending migrations, then start the server. Migrate-deploy is a no-op
+# when the schema is already up to date, so this is safe on every boot.
+CMD ["sh", "-c", "npx prisma migrate deploy && node server/index.js"]

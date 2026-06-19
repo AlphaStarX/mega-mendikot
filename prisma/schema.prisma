@@ -1,0 +1,28 @@
+// Mega Mendikot 5v5 — database schema.
+// PostgreSQL is the one intentional runtime dependency (server-side); auth
+// crypto stays zero-dependency (scrypt + HS256 via node:crypto). Phase 1 keeps
+// the User table minimal — stats/XP/avatars/friends are additive migrations in
+// later phases.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  passwordSalt String
+  displayName  String
+  createdAt    DateTime @default(now())
+
+  // Reserved for later phases (added via additive migrations, not yet queried):
+  //   wins, losses, tensCaptured, matchesPlayed, xp, level, avatarUrl, country, playerId
+
+  @@index([email])
+}

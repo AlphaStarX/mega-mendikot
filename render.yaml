@@ -8,8 +8,8 @@ services:
     name: mega-mendikot
     runtime: node
     plan: free
-    buildCommand: "echo 'No build step — zero dependencies'"
-    startCommand: "node server/index.js"
+    buildCommand: "npm ci && npx prisma generate"
+    startCommand: "npx prisma migrate deploy && node server/index.js"
     healthCheckPath: /
     autoDeploy: true
     envVars:
@@ -17,11 +17,13 @@ services:
         value: 18.20.4
       - key: FILL_TIMER_MS
         value: 20000
-      # When we add auth/database later, add these here:
-      # - key: DATABASE_URL
-      #   sync: false  # set manually in Render dashboard
-      # - key: SESSION_SECRET
-      #   generateValue: true
+      # Account database (Render managed Postgres injects DATABASE_URL automatically
+      # when you attach it as an add-on; otherwise set it manually to point at your DB).
+      - key: DATABASE_URL
+        sync: false
+      # Account auth — HS256 JWT signing secret.
+      - key: JWT_SECRET
+        generateValue: true
       # Team voice (LiveKit, §6.1). Self-host a LiveKit SFU (Docker + TURN) on a
       # separate host and set all three. Until set, voice no-ops and the game
       # plays exactly as without it.

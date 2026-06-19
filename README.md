@@ -3,10 +3,15 @@
 A fully playable, self-contained build of **Mega Mendikot 5v5** — a 5v5 team
 trick-taking card game — implementing the [master spec v1.3.0](./mega_mendikot_5v5_master_spec_v1_3.md).
 One Node process serves the web client and runs the authoritative game server.
-**Zero external dependencies** (Node 18+ only).
+
+The game server is **hand-rolled** (custom WebSocket server per RFC 6455 over
+`node:http`, no framework; auth crypto uses `node:crypto`'s scrypt + HS256, no
+`bcrypt`/`jsonwebtoken`). The **one** external runtime dependency is Postgres
+(via Prisma + pg) — used for accounts. If `DATABASE_URL`/`JWT_SECRET` are unset,
+accounts are disabled and the game plays anonymously exactly as before.
 
 ```
-npm install      # no-op (no deps) — just verifies Node
+npm install      # installs Prisma + pg (the only deps)
 npm start        # → http://localhost:3000
 ```
 
@@ -125,9 +130,21 @@ Render provides HTTPS + WebSocket support out of the box (the client auto-switch
 | `PORT` | `3000` | HTTP/WS port (set by Render automatically) |
 | `HOST` | `0.0.0.0` | Bind address |
 | `FILL_TIMER_MS` | `20000` | Quick-match: seconds before bots fill empty seats |
+| `DATABASE_URL` | _(unset)_ | Postgres connection string. When unset, accounts are disabled and the game plays as guests. |
+| `JWT_SECRET` | _(unset)_ | Account auth: HS256 signing secret for session tokens. |
 | `LIVEKIT_API_KEY` | _(unset)_ | LiveKit voice (optional). When unset, voice is disabled and the game plays silently. |
 | `LIVEKIT_API_SECRET` | _(unset)_ | LiveKit voice. Secret used to sign access tokens (HS256). |
 | `LIVEKIT_URL` | _(unset)_ | LiveKit voice. SFU WebSocket URL clients connect to, e.g. `wss://livekit.your-host.com`. |
+
+**Accounts (email/password)**
+
+Accounts are **optional and fail soft**. If `DATABASE_URL` and `JWT_SECRET` are unset (the default), the signup/login UI is hidden and everyone plays as a guest — exactly as before. To enable:
+
+1. Run Postgres (a `db` service is included in `deploy/docker-compose.yml`).
+2. Set `DATABASE_URL` and `JWT_SECRET` on the server.
+3. On first boot the app runs `prisma migrate deploy`, which creates the `User` table.
+
+Players can then sign up / log in from the menu. Authenticated users keep their display name across sessions and reclaim their seat from any device (cross-device reconnect); the name can't be spoofed because the server reads it from the account. **Guests and logged-in players coexist** in the same rooms. Passwords are hashed with scrypt (`node:crypto`); sessions are HS256 JWTs — no `bcrypt`/`jsonwebtoken` deps.
 
 **Voice (LiveKit team chat)**
 
@@ -141,10 +158,11 @@ Voice is **optional and fails soft**. If the three `LIVEKIT_*` env vars are unse
 
 Players will see a 🎙️ mic toggle during a match and a mic-state badge on each teammate's seat.
 
-**Future: adding auth and a database**
+**Roadmap**
 
-This deployment is designed to grow:
-- **Postgres:** Render → Add Database → copy `DATABASE_URL` into env vars. Add `pg` to dependencies, read `process.env.DATABASE_URL`.
-- **Auth:** Add session/login middleware. The WebSocket already identifies clients by `sessionId` — swap it for an auth token. (Team chat and LiveKit voice are already shipped; auth would harden token issuance.)
+This deployment is designed to grow. Already shipped: **team chat**, **LiveKit voice**, and **accounts** (email/password + Postgres). Still ahead, each as an additive migration/phase:
+- **OAuth** (Google/GitHub) — layered on the existing JWT account system.
+- **Stats & match history** — new columns on `User`, written at match end.
+- **Leaderboard, XP/levels, player IDs, avatars, friends** — all build on the DB foundation added here.
 
-No restructuring needed — all of it layers onto the existing single-server app.
+No restructuring needed — every phase layers onto the existing single-server app.

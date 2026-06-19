@@ -52,6 +52,21 @@ body {
 }
 .card-panel button:active, #rematch-btn:active, #retry-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #9c7917; }
 .hint { color: var(--muted); margin-top: 18px; font-size: 13px; }
+.hint.tiny { font-size: 11px; margin-top: 6px; }
+
+/* Account auth (Phase 1) */
+.auth-welcome { color: var(--gold); font-size: 13px; margin: 4px 0 0; }
+.auth-welcome a { color: var(--muted); text-decoration: underline; }
+.auth-guest-actions { margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); text-align: center; }
+.auth-guest-actions .link-btn { display: inline; margin: 0; }
+.auth-sep { color: var(--muted); margin: 0 6px; }
+#auth-screen .card-panel { max-width: 360px; }
+#auth-screen h2 { color: var(--gold); margin-bottom: 12px; text-align: center; }
+#auth-screen input { margin-top: 8px; }
+#auth-submit-btn { width: 100%; margin-top: 14px; }
+.auth-msg { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+#auth-mode-toggle { text-align: center; margin-top: 14px; }
+#auth-mode-toggle a { color: var(--gold); text-decoration: underline; cursor: pointer; }
 
 /* Menu buttons */
 .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }

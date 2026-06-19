@@ -23,11 +23,18 @@ services:
       dockerfile: Dockerfile
     container_name: mm-app
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       # Game server
       PORT: "3000"
       HOST: "0.0.0.0"
       FILL_TIMER_MS: "20000"
+      # Database (Postgres). Points at the `db` service over mm-net.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Account auth (Phase 1): HS256 JWT signing secret.
+      JWT_SECRET: ${JWT_SECRET}
       # Team voice (§6.1). The SAME api_key/api_secret MUST match livekit.yaml,
       # otherwise the SFU rejects the tokens this app signs.
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
@@ -38,6 +45,25 @@ services:
       - mm-net
     # Not published directly — Caddy fronts it on 443. Keeping it internal-only
     # means the game is only reachable over TLS via the reverse proxy.
+
+  db:
+    image: postgres:16-alpine
+    container_name: mm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    # Not published — only the app reaches it over mm-net.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - mm-net
 
   livekit:
     image: livekit/livekit-server:latest
@@ -90,3 +116,4 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  pg_data:
