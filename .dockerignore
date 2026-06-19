@@ -1,0 +1,26 @@
+# Keep the build context small and the image clean.
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.gitattributes
+nul
+
+# Tests + dev artifacts aren't needed in the runtime image.
+test
+*.test.js
+
+# Deploy scaffolding (composed separately, not baked into the app image).
+deploy
+Dockerfile
+.dockerignore
+
+# Docs
+README.md
+RULEBOOK.md
+mega_mendikot_5v5_master_spec_v1_3.md
+
+# Local env / secrets — never bake these into an image.
+.env
+.env.*
+*.local

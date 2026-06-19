@@ -1,0 +1,60 @@
+# LiveKit Server configuration (self-hosted SFU + embedded TURN).
+# Docs: https://github.com/livekit/livekit/blob/master/config-sample.yaml
+#
+# ⚠️ The api_key + api_secret here MUST exactly match LIVEKIT_API_KEY /
+#    LIVEKIT_API_SECRET in deploy/.env — the app signs JWTs with the secret and
+#    the SFU verifies them. Mismatch = every voice token rejected.
+
+# --- API / token authority ---
+# Generate a strong secret on the box with:  openssl rand -base64 32
+# Keep the key short (alphanumeric), the secret long.
+key: "REPLACE_WITH_LIVEKIT_API_KEY"
+secret: "REPLACE_WITH_LIVEKIT_API_SECRET"
+
+# --- Signaling endpoint (fronted by Caddy on 443 as wss://<voice-domain>) ---
+port: 7880
+bind_addresses:
+  - ""
+
+# --- WebRTC media transport ---
+rtc:
+  # Advertise the server's PUBLIC IP as an ICE candidate so browsers behind NAT
+  # can reach the SFU. The container's public IP is also passed via --node-ip in
+  # docker-compose.yml for robustness.
+  use_external_ip: true
+  # TCP fallback for clients where UDP is blocked. Expose 7881 if you rely on it.
+  tcp_port: 7881
+  # UDP port range for media — must match the range published in docker-compose.yml
+  # AND opened in the firewall (UFW). 10,000 ports is generous; you can narrow it.
+  port_range_start: 50000
+  port_range_end: 60000
+
+# --- TURN relay (for clients behind strict NAT / symmetric NAT) ---
+# TURN/TLS (5349) and TURN/UDP (3478) MUST be exposed directly — Caddy cannot
+# proxy this traffic. See docker-compose.yml ports.
+turn:
+  tls_port: 5349
+  # Domain the TURN cert is issued for. Should resolve to this server.
+  domain: "voice.REPLACE_WITH_YOUR_DOMAIN"
+  # Cert/key for TURN/TLS. Mount them under deploy/certs/ (see docker-compose.yml).
+  # If omitted, LiveKit generates a self-signed cert — browsers will usually
+  # reject TURN/TLS with a self-signed cert, so provide real ones in production.
+  cert_file: /etc/livekit/certs/turn.crt
+  key_file: /etc/livekit/certs/turn.key
+
+# --- Logging ---
+logging:
+  level: info
+  json: false
+
+# --- Room defaults (small, ephemeral, team-scoped mm_{roomId}_{team} rooms) ---
+room:
+  # Rooms auto-empty when the match ends and clients disconnect.
+  auto_create: true
+  # Enable remote participant mute indicators / metadata updates we rely on.
+  enable_remote_unmute: false
+
+# Uncomment for a Redis backend when you scale to multiple LiveKit nodes
+# (single-node does not need Redis):
+# redis:
+#   address: redis:6379

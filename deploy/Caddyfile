@@ -1,0 +1,49 @@
+# Caddy — TLS termination + reverse proxy for Mega Mendikot 5v5.
+#
+# {$PLAY_DOMAIN} and {$VOICE_DOMAIN} are read from the environment (set in .env),
+# so this file needs no editing per deployment.
+#
+# Caddy obtains and renews Let's Encrypt certs automatically on first request to
+# each hostname. Requirement: the hostnames' A records must already point here,
+# and ports 80/443 must be open (80 for the ACME HTTP challenge, 443 for traffic).
+
+# --- Game client + WebSocket ---
+{$PLAY_DOMAIN} {
+	encode gzip zstd
+
+	# Serve the static web client and proxy the /ws WebSocket upgrade to the app.
+	# Caddy handles WS/WSS upgrades transparently — no special directive needed.
+	reverse_proxy app:3000 {
+		# WebSocket connections are long-lived; keep them alive.
+		flush_interval -1
+	}
+
+	# A simple health check for Render-style monitors / uptime checks.
+	handle /health {
+		reverse_proxy app:3000
+	}
+}
+
+# --- LiveKit signaling (WSS) ---
+# This fronts ONLY the LiveKit signaling endpoint (port 7880). The actual voice
+# MEDIA travels over UDP 50000-60000 and TURN/TLS 5349, which are exposed directly
+# on the livekit container (Caddy cannot proxy WebRTC media).
+{$VOICE_DOMAIN} {
+	encode gzip zstd
+
+	reverse_proxy livekit:7880 {
+		flush_interval -1
+		# LiveKit signaling uses long-lived WSS; allow generous timeouts.
+		transport http {
+			read_timeout 5m
+			write_timeout 5m
+		}
+	}
+}
+
+# Catch-all: redirect bare HTTP on port 80 to HTTPS. Caddy does this automatically
+# for defined sites, but an explicit block ensures the ACME HTTP-01 challenge path
+# keeps working even if a hostname isn't matched above.
+:80 {
+	respond "ok" 200
+}

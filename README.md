@@ -125,12 +125,26 @@ Render provides HTTPS + WebSocket support out of the box (the client auto-switch
 | `PORT` | `3000` | HTTP/WS port (set by Render automatically) |
 | `HOST` | `0.0.0.0` | Bind address |
 | `FILL_TIMER_MS` | `20000` | Quick-match: seconds before bots fill empty seats |
+| `LIVEKIT_API_KEY` | _(unset)_ | LiveKit voice (optional). When unset, voice is disabled and the game plays silently. |
+| `LIVEKIT_API_SECRET` | _(unset)_ | LiveKit voice. Secret used to sign access tokens (HS256). |
+| `LIVEKIT_URL` | _(unset)_ | LiveKit voice. SFU WebSocket URL clients connect to, e.g. `wss://livekit.your-host.com`. |
 
-**Future: adding auth, database, and chat**
+**Voice (LiveKit team chat)**
+
+Voice is **team-scoped and match-only**: teammates can hear each other during a match; opponents never can. The server derives each human's team from their seat (even seats = Team A, odd = Team B) and mints a LiveKit access token for a per-team room named `mm_{roomId}_{team}`. Because opponents land in a *different* room, audio isolation is structural — the client cannot spoof its team.
+
+Voice is **optional and fails soft**. If the three `LIVEKIT_*` env vars are unset (the default), the server never mints tokens, the client never connects, and the game behaves exactly as before. To enable it:
+
+1. **Self-host a LiveKit SFU** on a separate host (Render's free web tier can't run it). See the [LiveKit deploy guide](https://docs.livekit.io/deploy/vm/) and the [`livekit/livekit-server`](https://github.com/livekit/livekit-server) Docker image. Configure a **TURN** server — reliable NAT traversal needs it.
+2. Set `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `LIVEKIT_URL` (the SFU's `wss://…` URL) on the Render web service.
+3. That's it. The browser SDK loads via CDN (`livekit-client`, pinned in `client/index.html`) — **the server stays zero-dependency**. Tokens are signed JWTs minted with `node:crypto` in `server/livekit.js` (no SDK on the server).
+
+Players will see a 🎙️ mic toggle during a match and a mic-state badge on each teammate's seat.
+
+**Future: adding auth and a database**
 
 This deployment is designed to grow:
 - **Postgres:** Render → Add Database → copy `DATABASE_URL` into env vars. Add `pg` to dependencies, read `process.env.DATABASE_URL`.
-- **Auth:** Add session/login middleware. The WebSocket already identifies clients by `sessionId` — swap it for an auth token.
-- **Chat:** Add a `chat` message type. The room's `broadcast()` already reaches all players.
+- **Auth:** Add session/login middleware. The WebSocket already identifies clients by `sessionId` — swap it for an auth token. (Team chat and LiveKit voice are already shipped; auth would harden token issuance.)
 
-No restructuring needed — all three layer onto the existing single-server app.
+No restructuring needed — all of it layers onto the existing single-server app.

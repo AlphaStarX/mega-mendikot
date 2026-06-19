@@ -22,3 +22,12 @@ services:
       #   sync: false  # set manually in Render dashboard
       # - key: SESSION_SECRET
       #   generateValue: true
+      # Team voice (LiveKit, §6.1). Self-host a LiveKit SFU (Docker + TURN) on a
+      # separate host and set all three. Until set, voice no-ops and the game
+      # plays exactly as without it.
+      # - key: LIVEKIT_API_KEY
+      #   sync: false
+      # - key: LIVEKIT_API_SECRET
+      #   sync: false
+      # - key: LIVEKIT_URL
+      #   sync: false  # e.g. wss://livekit.your-host.com

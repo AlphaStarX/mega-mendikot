@@ -1,0 +1,92 @@
+# Mega Mendikot 5v5 — single-box deployment stack (OVH Montreal VPS).
+#
+# Three services on one host:
+#   app      — the zero-dependency Node game (HTTP + /ws WebSocket)
+#   livekit  — self-hosted LiveKit SFU + embedded TURN (team voice)
+#   caddy    — TLS termination + reverse proxy (auto Let's Encrypt)
+#
+# Bring up:        docker compose up -d
+# Tail logs:       docker compose logs -f
+# Rebuild app:     docker compose up -d --build app
+#
+# Required before first run:
+#   1. Fill in deploy/.env (copy from deploy/.env.example) — PLAY_DOMAIN, VOICE_DOMAIN,
+#      LIVEKIT_API_KEY, LIVEKIT_API_SECRET, plus the TURN cert paths if you set them.
+#   2. Fill in deploy/livekit.yaml (api_key/api_secret must match .env exactly).
+#
+# See deploy/README.md for the full step-by-step runbook.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: mm-app
+    restart: unless-stopped
+    environment:
+      # Game server
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      FILL_TIMER_MS: "20000"
+      # Team voice (§6.1). The SAME api_key/api_secret MUST match livekit.yaml,
+      # otherwise the SFU rejects the tokens this app signs.
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # The Caddy-fronted WSS endpoint clients connect to (signaling only).
+      LIVEKIT_URL: ${LIVEKIT_URL}
+    networks:
+      - mm-net
+    # Not published directly — Caddy fronts it on 443. Keeping it internal-only
+    # means the game is only reachable over TLS via the reverse proxy.
+
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: mm-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit/livekit.yaml --node-ip=${PUBLIC_IP}
+    volumes:
+      - ./livekit.yaml:/etc/livekit/livekit.yaml:ro
+      # Optional: mount a pre-issued cert/key for TURN/TLS (port 5349). If you
+      # leave LIVEKIT's turn cert empty it will generate a self-signed one, which
+      # most browsers reject for TURN/TLS — so provide real certs for production.
+      - ./certs:/etc/livekit/certs:ro
+    ports:
+      # Signaling (WSS) — proxied through Caddy on 443, but also published so the
+      # LiveKit server API / health checks can reach it directly if needed.
+      - "7880:7880"
+      # TURN/TLS — MUST be exposed directly (WebRTC media can't be reverse-proxied).
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      # WebRTC media over UDP — MUST be exposed directly. Range matches livekit.yaml.
+      - "50000-60000:50000-60000/udp"
+    networks:
+      - mm-net
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: mm-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC) — optional but nice
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data        # TLS cert store (persists across restarts)
+      - caddy_config:/config
+    environment:
+      PLAY_DOMAIN: ${PLAY_DOMAIN}
+      VOICE_DOMAIN: ${VOICE_DOMAIN}
+    depends_on:
+      - app
+      - livekit
+    networks:
+      - mm-net
+
+networks:
+  mm-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:

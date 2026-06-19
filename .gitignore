@@ -10,6 +10,11 @@ npm-debug.log*
 .env.local
 .env.*.local
 
+# Deploy secrets (livekit credentials, TLS certs)
+deploy/.env
+deploy/certs/
+certs/
+
 # OS
 .DS_Store
 Thumbs.db
