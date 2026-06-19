@@ -4,9 +4,12 @@ This is the **step-by-step runbook** for hosting the game + team voice (LiveKit)
 single OVHcloud VPS in Montreal, with automatic TLS via Caddy. Scope: **app + voice
 first** — Postgres/login is a later step (see "Next phase" at the bottom).
 
+> **Domain:** `mindikot.com` (registered at Porkbun). Hostnames:
+> `play.mindikot.com` (game) and `voice.mindikot.com` (LiveKit SFU).
+>
 > Target host: **OVHcloud VPS-1** (2 vCore / 4 GB / 40 GB NVMe, ~$7.60 CAD/mo),
 > region **Canada (Beauharnois/Montreal)**, **Debian 12**. Everything here runs as root
-> unless noted; switch to a non-root user in Phase 3.
+> unless noted; switch to a non-root user in Phase 2.
 
 ---
 
@@ -32,6 +35,48 @@ published on the livekit container, not on caddy.
 
 ---
 
+## Phase 0 — Buy the domain & set up DNS (do this while the VPS provisions)
+
+**Registrar:** Porkbun (`porkbun.com`) — `.com` at near-wholesale, no renewal markup,
+free WHOIS privacy, free DNS. `mindikot.com` is **available** as of this writing.
+
+1. Sign up at **porkbun.com** (email + password).
+2. Search **`mindikot`** → add `mindikot.com` (~$10–11/yr) to cart → checkout.
+3. At checkout, set:
+   - **WHOIS Privacy:** ✅ ON (free, hides your personal info)
+   - **Auto-renew:** ✅ ON (so it doesn't expire)
+   - **Premium DNS:** ❌ OFF · **SSL:** ❌ OFF (Caddy handles certs)
+4. Pay. The domain is active within a minute.
+
+**Nameservers:** A fresh Porkbun domain uses Porkbun's nameservers by default, so
+there's usually nothing to change. Verify in Domain Management → `mindikot.com` →
+**Nameservers** that it says "Use Porkbun nameservers".
+
+**Add two A records** (Domain Management → `mindikot.com` → **DNS** → "Add Record"):
+
+| Type | Host | Answer | TTL |
+|---|---|---|---|
+| `A` | `play` | `<YOUR_VPS_IP>` | 600 |
+| `A` | `voice` | `<YOUR_VPS_IP>` | 600 |
+
+Delete any default `@`/`www` placeholder records if you like (they aren't needed for
+the game). Both `play.*` and `voice.*` point at the same single VPS.
+
+**Verify propagation** from your local machine (wait 2–10 min):
+```bash
+nslookup play.mindikot.com   # → your VPS IP
+nslookup voice.mindikot.com  # → your VPS IP
+```
+Porkbun DNS is usually live within 5 minutes. Until both resolve to your VPS IP,
+Caddy can't obtain TLS certs (Phases 6–7 will fail on cert issuance), so don't skip
+this check.
+
+> ⚠️ **Do not use Cloudflare's orange-cloud proxy on the `voice` record.** Cloudflare's
+> proxy only forwards HTTP(S), not WebRTC UDP, so it breaks voice. Leave both records
+> DNS-only (Porkbun is DNS-only by default, so this is automatic).
+
+---
+
 ## Phase 1 — Provision the OVH VPS
 
 1. Sign in at **ovhcloud.com/en-ca** → **VPS** → order **VPS v1** (2 vCore / 4 GB).
@@ -44,24 +89,7 @@ published on the livekit container, not on caddy.
 4. Wait for provisioning (~1–3 min). In the OVH dashboard, copy the **public IPv4**
    (looks like `51.79.x.x` or `192.99.x.x`).
 
-## Phase 2 — Point your domain at the VPS
-
-5. At your registrar (Cloudflare, Namecheap, GoDaddy, etc.), add **two A records**:
-   | Host | Type | Value |
-   |---|---|---|
-   | `play` | A | `<vps-ip>` |
-   | `voice` | A | `<vps-ip>` |
-   - Tip: set TTL to 5 min during setup; raise to 1h after it's working.
-   - If using Cloudflare, set these records to **DNS-only (grey cloud)** for `voice.*`
-     — Cloudflare's proxy doesn't forward WebRTC UDP. `play.*` can be proxied (orange).
-6. Wait for propagation, then verify from your own machine:
-   ```bash
-   nslookup play.mindikot.com
-   nslookup voice.mindikot.com
-   # both should resolve to your VPS IP
-   ```
-
-## Phase 3 — First login + harden the box
+## Phase 2 — First login + harden the box
 
 7. SSH in:
    ```bash
@@ -91,7 +119,7 @@ published on the livekit container, not on caddy.
     Then `systemctl restart ssh`. **Test `ssh mm@<vps-ip>` in a second terminal
     before closing your root session.**
 
-## Phase 4 — Open firewall ports
+## Phase 3 — Open firewall ports
 
 12. Configure UFW (Debian may need it installed first: `apt install -y ufw`):
     ```bash
@@ -110,7 +138,7 @@ published on the livekit container, not on caddy.
     > OVH also has its own security group / firewall in the dashboard ("VPS firewall"
     > under Network). If you enabled it, mirror these rules there too.
 
-## Phase 5 — Get the code onto the box
+## Phase 4 — Get the code onto the box
 
 13. As user `mm`, clone the repo:
     ```bash
@@ -120,7 +148,7 @@ published on the livekit container, not on caddy.
     ```
     (Or `scp -r deploy/ mm@<vps-ip>:~/mega-mendikot/` if you prefer not to clone.)
 
-## Phase 6 — Configure secrets
+## Phase 5 — Configure secrets
 
 14. Generate a strong LiveKit secret and a short API key:
     ```bash
@@ -148,7 +176,7 @@ published on the livekit container, not on caddy.
     > The app signs voice tokens with this secret; the SFU verifies them. A mismatch
     > is the #1 cause of "voice won't connect" — double-check they're identical.
 
-## Phase 7 — TURN/TLS certificate (port 5349)
+## Phase 6 — TURN/TLS certificate (port 5349)
 
 TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 
@@ -173,7 +201,7 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 > TURN/TLS with self-signed certs**, so voice may fail on strict-NAT networks. Don't
 > skip it for production.
 
-## Phase 8 — Bring it up
+## Phase 7 — Bring it up
 
 19. From the `deploy/` directory:
     ```bash
@@ -188,7 +216,7 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
     - **Caddy cert:** the first request to `https://play.<domain>` triggers issuance; check
       `docker compose logs caddy` for "certificate obtained successfully".
 
-## Phase 9 — Verify end-to-end
+## Phase 8 — Verify end-to-end
 
 21. **Game loads:** open `https://play.mindikot.com` → you should see the join screen,
     valid padlock (TLS works).
@@ -205,7 +233,7 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 25. **TURN/NAT path:** connect one client from a **mobile hotspot** (different NAT). If voice
     still connects, TURN is doing its job.
 
-## Phase 10 — Ongoing operations
+## Phase 9 — Ongoing operations
 
 ```bash
 docker compose logs -f                    # follow all logs
