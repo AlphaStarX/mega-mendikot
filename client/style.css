@@ -44,13 +44,13 @@ body {
   padding: 12px 14px; border-radius: 10px; border: 1px solid #2c5a40;
   background: #0a2417; color: var(--text); font-size: 16px; text-align: center;
 }
-.card-panel button, #rematch-btn, #retry-btn {
+.card-panel button, #rematch-btn {
   background: linear-gradient(180deg, var(--gold), #d8a725);
   color: #2a1c00; border: none; padding: 12px 28px; border-radius: 10px;
   font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 0 #9c7917;
   transition: transform .05s; margin-top: 4px;
 }
-.card-panel button:active, #rematch-btn:active, #retry-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #9c7917; }
+.card-panel button:active, #rematch-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #9c7917; }
 .hint { color: var(--muted); margin-top: 18px; font-size: 13px; }
 .hint.tiny { font-size: 11px; margin-top: 6px; }
 
@@ -148,8 +148,27 @@ body {
 .seat.team-a .avatar { border-color: var(--teamA); }
 .seat.team-b .avatar { border-color: var(--teamB); }
 .seat.me .avatar { background: var(--gold); color: #2a1c00; }
-.seat.active .avatar { box-shadow: 0 0 0 4px var(--gold), 0 0 16px var(--gold); animation: pulse 1s infinite; }
+/* Active seat: a subtle gold glow (the countdown ring is the primary indicator). */
+.seat.active .avatar { box-shadow: 0 0 0 3px var(--gold), 0 0 12px rgba(245,197,66,.5); }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px var(--gold), 0 0 22px var(--gold); } }
+
+/* Turn-timer ring (drawn around the active seat's avatar). The progress fill
+   animates via stroke-dashoffset (updated each second in JS); the warning state
+   flashes red in the final 5 seconds, matching the server's turnWarning. */
+.timer-ring {
+  position: absolute; top: 50%; left: 50%;
+  width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  transform: rotate(-90deg);      /* start the arc at 12 o'clock */
+  pointer-events: none;
+  z-index: 3;
+}
+.timer-ring-track { fill: none; stroke: rgba(0,0,0,.35); stroke-width: 3; }
+.timer-ring-fill {
+  fill: none; stroke: var(--gold); stroke-width: 3; stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear, stroke .2s;
+}
+.timer-ring.warn .timer-ring-fill { stroke: var(--red); animation: ring-flash 0.5s ease-in-out infinite alternate; }
+@keyframes ring-flash { to { opacity: 0.4; } }
 .seat .name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
 .seat .meta { font-size: 11px; color: var(--muted); }
 .seat .thinking { color: var(--gold); font-style: italic; }
@@ -168,7 +187,6 @@ body {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   z-index: 2;
 }
-#turn-timer { display: none; }
 
 .table-card {
   position: absolute;

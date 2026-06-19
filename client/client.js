@@ -5,6 +5,11 @@ const SUIT_GLYPH = { SPADES: "♠", HEARTS: "♥", DIAMONDS: "♦", CLUBS: "♣"
 const SUIT_COLOR = { SPADES: "black", HEARTS: "red", DIAMONDS: "red", CLUBS: "black" };
 const RANK_NAME = { 7: "7", 8: "8", 9: "9", 10: "10", 11: "J", 12: "Q", 13: "K", 14: "A" };
 
+// Must match the server's TURN_SECONDS (game-room.js §2.9). The client runs a
+// decorative local countdown synced to this; the server is authoritative for
+// the 0s auto-play and emits turnWarning at 5s.
+const TURN_SECONDS = 20;
+
 // 10 positions around the oval table. Index = visual slot (0=top, clockwise).
 // Slot 5 is the bottom center — where "you" always sit.
 const POS_FOR_10 = [
@@ -51,7 +56,8 @@ const state = {
   trumpSuit: "",
   activeSeat: -1,
   score: { A: 0, B: 0 },
-  turnTime: 15,
+  turnTime: 20,
+  turnWarningSeat: null,  // seat under 5s warning (ring flashes red)
   playedCards: [],
   winnerSeat: null,
   kittyActive: false,
@@ -105,6 +111,7 @@ function connect(name, opts = {}) {
     } else {
       sendJoin(name, state.pendingMode, state.pendingRoomId);
     }
+  };
   state.ws.onmessage = (ev) => {
     let m; try { m = JSON.parse(ev.data); } catch { return; }
     handle(m);
@@ -147,6 +154,7 @@ function handle(m) {
     case "trickWon": onTrickWon(m); break;
     case "botThinking": onBotThinking(m); break;
     case "trumpDeclared": state.trumpSuit = m.suit; renderHud(); break;
+    case "turnWarning": state.turnWarningSeat = m.seat; renderSeats(); break;
     case "matchEnd": onMatchEnd(m); break;
     case "chat": onChat(m); break;
     case "voiceState": onVoiceState(m); break;
@@ -487,6 +495,8 @@ function showChatPanel(show) {
 
 function onMatchEnd(m) {
   disconnectVoice(); // tear down LiveKit audio on match end (server also emits voiceEnd)
+  stopTurnCountdown(); // stop the decorative turn-timer ring
+  state.activeSeat = -1;
   const me = m.seats.find((s) => s.seat === state.you);
   const myTeamWon = me && me.team === m.winningTeam;
   $("end-title").textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
@@ -580,12 +590,45 @@ function renderSeats() {
         ? '<span class="voice-ind muted" title="Muted">🔇</span>'
         : '<span class="voice-ind on" title="Mic on">🎙️</span>';
     }
+    // Turn-timer ring: only on the active seat. The progress circle is driven by
+    // state.turnTime via renderTimerRing() (updated each second by the countdown).
+    const timerRing = s.seat === state.activeSeat ? timerRingSvg(s.seat) : "";
     el.innerHTML = `
-      <div class="avatar">${initials}${voiceGlyph}</div>
+      <div class="avatar">${initials}${voiceGlyph}${timerRing}</div>
       <div class="name">${s.seat === state.you ? "You" : s.name}</div>
       ${thinking ? '<div class="meta"><span class="thinking">thinking…</span></div>' : ''}`;
     table.appendChild(el);
   });
+  renderTimerRing();
+}
+
+// SVG progress ring drawn around the active seat's avatar. r=25 fits a 46px
+// avatar (the circle sits just inside its border). stroke-dashoffset animates
+// from 0 (full) to circumference (empty) as the timer counts down.
+const TIMER_R = 25;
+const TIMER_C = 2 * Math.PI * TIMER_R; // circumference (~157)
+function timerRingSvg(seat) {
+  const warn = state.turnWarningSeat === seat ? " warn" : "";
+  // stroke-dashoffset is set live by renderTimerRing; start full here.
+  return `<svg class="timer-ring${warn}" viewBox="0 0 56 56" aria-hidden="true">
+    <circle cx="28" cy="28" r="${TIMER_R}" class="timer-ring-track" />
+    <circle cx="28" cy="28" r="${TIMER_R}" class="timer-ring-fill"
+      stroke-dasharray="${TIMER_C}" stroke-dashoffset="0" />
+  </svg>`;
+}
+
+// Update just the ring's progress + warning class without re-rendering seats.
+function renderTimerRing() {
+  const seatsHost = $("table");
+  if (!seatsHost) return;
+  const ring = seatsHost.querySelector(".seat.active .timer-ring");
+  if (!ring) return;
+  const frac = Math.max(0, Math.min(1, state.turnTime / TURN_SECONDS));
+  const fill = ring.querySelector(".timer-ring-fill");
+  if (fill) fill.style.strokeDashoffset = String(TIMER_C * (1 - frac));
+  // Flash red in the final 5 seconds (matches the server's turnWarning at 5s).
+  const warn = (state.turnWarningSeat === state.activeSeat) || state.turnTime <= 5;
+  ring.classList.toggle("warn", !!warn);
 }
 
 // Mirror of the server's resolveTrickWinner (spec §2.7): determines which
@@ -711,6 +754,28 @@ function renderHud() {
 function updateMyTurn() {
   state.myTurn = state.activeSeat === state.you;
   renderHand();
+  // A new player's turn started: reset the local countdown to full and clear
+  // any 5s warning. This re-syncs the decorative client timer to the server.
+  if (state.activeSeat >= 0) {
+    state.turnTime = TURN_SECONDS;
+    state.turnWarningSeat = null;
+    startTurnCountdown();
+    renderSeats();
+  }
+}
+
+// --- decorative turn-timer countdown (mirrors the server's authoritative timer) ---
+let _turnCountdownHandle = null;
+function startTurnCountdown() {
+  stopTurnCountdown();
+  _turnCountdownHandle = setInterval(() => {
+    if (state.activeSeat < 0) return;
+    state.turnTime = Math.max(0, state.turnTime - 1);
+    renderTimerRing();
+  }, 1000);
+}
+function stopTurnCountdown() {
+  if (_turnCountdownHandle) { clearInterval(_turnCountdownHandle); _turnCountdownHandle = null; }
 }
 
 function isPlayable(card) {
@@ -756,12 +821,14 @@ $("code-input").addEventListener("keydown", (e) => {
 $("lobby-start-btn").addEventListener("click", () => send({ t: "startGame" }));
 $("lobby-leave-btn").addEventListener("click", () => {
   disconnectVoice();
+  stopTurnCountdown();
   if (state.ws) state.ws.close();
   state.room = null; state.you = null;
   showScreen("join-screen");
 });
 $("rematch-btn").addEventListener("click", () => {
   disconnectVoice();
+  stopTurnCountdown();
   if (state.ws) state.ws.close();
   state.you = null; state.room = null;
   showChatPanel(false);

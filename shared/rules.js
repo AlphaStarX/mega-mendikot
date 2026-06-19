@@ -60,22 +60,6 @@ export function dealHands(deck) {
   return { hands, kitty };
 }
 
-// Determine who leads trick #1 from per-player selection cards (spec §2.4).
-// Tied players redraw recursively; capped at 20 iterations with deterministic fallback.
-export function determineFirstLead(selectionRanks) {
-  let active = selectionRanks.map((rank, i) => ({ seat: i, rank }));
-  for (let iter = 0; iter < 20 && active.length > 1; iter++) {
-    let max = -1;
-    for (const p of active) if (p.rank > max) max = p.rank;
-    active = active.filter((p) => p.rank === max);
-    if (active.length === 1) return active[0].seat;
-    // caller redraws for tied seats; here we just re-evaluate (ranked caller supplies fresh ranks)
-    break; // single-pass: caller handles recursion by passing fresh ranks for tied seats only
-  }
-  // Fallback: lowest seat among remaining tied set.
-  return active.length ? Math.min(...active.map((p) => p.seat)) : 0;
-}
-
 // Validate that a card play is legal (follow-suit rule, spec §2.5).
 // Returns true if legal; the off-suit info drives trump establishment.
 export function validatePlay(card, hand, leadSuit) {
