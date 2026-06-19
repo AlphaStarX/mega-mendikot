@@ -54,6 +54,13 @@ const state = {
   kittyLeft: 0,
   thinkingSeat: null,
   myTurn: false,
+  myTeam: null,        // for team chat routing/display
+  chatLog: [],         // ephemeral chat messages for the current match
+  // --- LiveKit team voice (match-only, §6.1) ---
+  voiceRoom: null,     // livekit.Room instance once connected
+  voiceConnected: false,
+  voiceMuted: false,
+  voiceMutedSeats: {}, // seat -> bool (teammate mute indicators)
   // lobby
   room: null,
   hostSeat: null,
@@ -102,6 +109,9 @@ function handle(m) {
     case "botThinking": onBotThinking(m); break;
     case "trumpDeclared": state.trumpSuit = m.suit; renderHud(); break;
     case "matchEnd": onMatchEnd(m); break;
+    case "chat": onChat(m); break;
+    case "voiceState": onVoiceState(m); break;
+    case "voiceEnd": disconnectVoice(); break;
     case "error": showMsg(m.message); break;
   }
 }
@@ -163,12 +173,19 @@ function onInit(m) {
   state.kittyActive = !!m.kittyActive;
   state.kittyLeft = m.kittyLeft;
   state.thinkingSeat = null;
+  // Derive our team for chat display
+  const me = m.seats.find((s) => s.seat === m.you);
+  state.myTeam = me ? me.team : null;
+  state.chatLog = []; // fresh chat per match
   showScreen("game-screen");
+  showChatPanel(true);
   renderSeats();
   renderHand();
   renderHud();
   renderPlayedCards();
   renderKitty();
+  // Match-only voice: connect if the server minted a team-scoped token.
+  connectVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken });
 }
 
 function onTrickStart(m) {
@@ -222,7 +239,148 @@ function onBotThinking(m) {
   renderSeats();
 }
 
+// ---------- team chat ----------
+function onChat(m) {
+  state.chatLog.push({ seat: m.seat, name: m.name, team: m.team, text: m.text });
+  renderChat();
+}
+
+function renderChat() {
+  const log = $("chat-log");
+  if (!log) return;
+  log.innerHTML = "";
+  state.chatLog.forEach((msg) => {
+    const row = document.createElement("div");
+    const teamClass = msg.team === "A" ? "team-a" : "team-b";
+    const teamColor = msg.team === "A" ? "var(--teamA)" : "var(--teamB)";
+    const isMe = msg.seat === state.you;
+    row.className = `chat-row ${teamClass}`;
+    row.innerHTML = `<span class="chat-name" style="color:${teamColor}">${isMe ? "You" : msg.name}:</span> <span class="chat-text">${msg.text}</span>`;
+    log.appendChild(row);
+  });
+  log.scrollTop = log.scrollHeight; // auto-scroll to latest
+}
+
+function sendChat() {
+  const input = $("chat-input");
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  send({ t: "chat", text });
+  input.value = "";
+}
+
+// ---------- team voice (LiveKit) ----------
+// The LiveKit browser SDK is loaded via CDN in index.html (the server stays
+// zero-dependency). Voice is match-only: the server sends a voiceToken on init
+// once the room is in PLAYING. A missing token, a failed mic permission, or an
+// unreachable SFU must NEVER break the game — every path degrades to silent.
+const LIVEKIT = typeof window !== "undefined" ? window.livekit : undefined;
+
+async function connectVoice(voice) {
+  if (!voice || !voice.voiceToken) return;       // voice not configured server-side
+  if (!LIVEKIT) { showMsg("Voice unavailable (SDK not loaded)."); return; }
+  if (state.voiceRoom) { await disconnectVoice(); }
+  try {
+    const room = new LIVEKIT.Room({
+      adaptiveStream: true,
+      dynacast: true,
+      audioCaptureDefaults: { autoGainControl: true, echoCancellation: true, noiseSuppression: true },
+    });
+    await room.connect(voice.voiceUrl, voice.voiceToken, { autoSubscribe: true });
+    state.voiceRoom = room;
+    state.voiceConnected = true;
+    state.voiceMuted = false;
+    // Publish the mic. The browser shows its native permission prompt here; a
+    // denial rejects and we catch it below (game keeps running, voice is off).
+    try {
+      await room.localParticipant.setMicrophoneEnabled(true);
+    } catch (micErr) {
+      showMsg("🎙️ Mic blocked — voice is listen-only.");
+      state.voiceMuted = true;
+    }
+    updateVoiceButton();
+    showMsg(`🎙️ Voice connected — talk to Team ${state.myTeam}`);
+  } catch (err) {
+    // SFU unreachable, bad token, network failure, etc. Fail soft.
+    state.voiceRoom = null;
+    state.voiceConnected = false;
+    updateVoiceButton();
+    showMsg("Voice could not connect. Game continues.");
+    if (typeof console !== "undefined") console.warn("LiveKit connect failed:", err);
+  }
+}
+
+async function disconnectVoice() {
+  const room = state.voiceRoom;
+  state.voiceRoom = null;
+  state.voiceConnected = false;
+  state.voiceMutedSeats = {};
+  updateVoiceButton();
+  if (room) {
+    try { await room.disconnect(); } catch (e) { /* already gone */ }
+  }
+}
+
+async function toggleVoiceMute() {
+  if (!state.voiceRoom) return;
+  const next = !state.voiceMuted;
+  try {
+    await state.voiceRoom.localParticipant.setMicrophoneEnabled(!next);
+    state.voiceMuted = next;
+    send({ t: "voiceToggle", muted: next });
+    updateVoiceButton();
+  } catch (err) {
+    showMsg("Mic toggle failed.");
+  }
+}
+
+function onVoiceState(m) {
+  state.voiceMutedSeats[m.seat] = !!m.muted;
+  renderSeats();
+}
+
+function updateVoiceButton() {
+  const btn = $("voice-toggle");
+  if (!btn) return;
+  if (!state.voiceConnected) {
+    btn.classList.add("hidden");
+    btn.setAttribute("aria-pressed", "false");
+    return;
+  }
+  btn.classList.remove("hidden");
+  btn.textContent = state.voiceMuted ? "🔇 Muted" : "🎙️ Mic On";
+  btn.setAttribute("aria-pressed", String(state.voiceMuted));
+}
+
+function showChatPanel(show) {
+  const panel = $("chat-panel");
+  const toggle = $("chat-toggle");
+  if (!panel) return;
+  if (show) {
+    const label = panel.querySelector(".chat-team-label");
+    if (label && state.myTeam) {
+      label.textContent = `(Team ${state.myTeam})`;
+      label.style.color = state.myTeam === "A" ? "var(--teamA)" : "var(--teamB)";
+    }
+    // On desktop show the panel + hide the toggle. On mobile, show the toggle
+    // and keep the panel hidden until tapped.
+    const isMobile = window.matchMedia("(max-width: 600px)").matches;
+    if (isMobile) {
+      toggle.classList.remove("hidden");
+      panel.classList.add("hidden");
+    } else {
+      toggle.classList.add("hidden");
+      panel.classList.remove("hidden");
+    }
+  } else {
+    panel.classList.add("hidden");
+    if (toggle) toggle.classList.add("hidden");
+  }
+}
+
 function onMatchEnd(m) {
+  disconnectVoice(); // tear down LiveKit audio on match end (server also emits voiceEnd)
   const me = m.seats.find((s) => s.seat === state.you);
   const myTeamWon = me && me.team === m.winningTeam;
   $("end-title").textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
@@ -257,8 +415,19 @@ function renderSeats() {
     el.style.top = y + "%";
     const initials = (s.name || "?").slice(0, 2).toUpperCase();
     const thinking = s.seat === state.thinkingSeat;
+    // Voice indicator: only for teammates (opponent voice state is unknown and
+    // irrelevant — they're in a different LiveKit room). "You" reflects your own
+    // mic state; other teammates reflect the voiceState broadcasts we received.
+    let voiceGlyph = "";
+    const isTeammate = s.team === state.myTeam && !s.isBot;
+    if (isTeammate && state.voiceConnected) {
+      const muted = s.seat === state.you ? state.voiceMuted : !!state.voiceMutedSeats[s.seat];
+      voiceGlyph = muted
+        ? '<span class="voice-ind muted" title="Muted">🔇</span>'
+        : '<span class="voice-ind on" title="Mic on">🎙️</span>';
+    }
     el.innerHTML = `
-      <div class="avatar">${initials}</div>
+      <div class="avatar">${initials}${voiceGlyph}</div>
       <div class="name">${s.seat === state.you ? "You" : s.name}</div>
       ${thinking ? '<div class="meta"><span class="thinking">thinking…</span></div>' : ''}`;
     table.appendChild(el);
@@ -432,14 +601,29 @@ $("code-input").addEventListener("keydown", (e) => {
 });
 $("lobby-start-btn").addEventListener("click", () => send({ t: "startGame" }));
 $("lobby-leave-btn").addEventListener("click", () => {
+  disconnectVoice();
   if (state.ws) state.ws.close();
   state.room = null; state.you = null;
   showScreen("join-screen");
 });
 $("rematch-btn").addEventListener("click", () => {
+  disconnectVoice();
   if (state.ws) state.ws.close();
   state.you = null; state.room = null;
+  showChatPanel(false);
   showScreen("join-screen");
+});
+// Voice mic toggle (match-only; button is hidden until voice connects).
+$("voice-toggle").addEventListener("click", toggleVoiceMute);
+
+// Chat send wiring
+$("chat-send").addEventListener("click", sendChat);
+$("chat-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+});
+// Mobile chat toggle
+$("chat-toggle").addEventListener("click", () => {
+  $("chat-panel").classList.toggle("hidden");
 });
 
 // ?room=ABCD deep-link: prefill the join code.

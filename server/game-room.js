@@ -9,6 +9,7 @@ import {
   autoPlayPick, teamForSeat, isTen,
 } from "../shared/rules.js";
 import { selectBotPlayCard } from "../shared/bot.js";
+import { makeLiveKitToken, voiceConfigured, voiceConfig, voiceRoomName } from "./livekit.js";
 
 export const TURN_SECONDS = 20;     // spec §2.9
 const BOT_DELAY_MIN_MS = 1500;      // bots "think" before playing
@@ -217,7 +218,22 @@ export class GameRoom {
     this.playCard(seatIdx, cardId, /*auto=*/false);
   }
 
-  // --- core play-card executor ---
+  // --- team chat (spec §1.2: team-only text chat) ---
+  onChatFromSeat(seatIdx, text) {
+    if (this.matchState !== "PLAYING") return;
+    const seat = this.seats[seatIdx];
+    if (!seat) return;
+    // Sanitize: trim, cap at 200 chars, escape HTML to prevent injection.
+    const clean = String(text || "").trim().slice(0, 200)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+    if (!clean) return;
+    // Sender identity comes from the server, never the client (prevents spoofing).
+    this.broadcastToTeam(seat.team, {
+      t: "chat", seat: seatIdx, name: seat.name, team: seat.team, text: clean,
+    });
+    this.log.push(`Chat [${seat.team}] ${seat.name}: ${clean}`);
+  }
   playCard(seatIdx, cardId, auto) {
     const seat = this.seats[seatIdx];
     const idx = seat.hand.findIndex((c) => c.id === cardId);
@@ -326,6 +342,10 @@ export class GameRoom {
     this.clearBot();
     if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
     this.matchState = "FINISHED";
+    // Tell clients to tear down LiveKit voice before the match-end screen shows.
+    // Sent first so the client disconnects its audio while it still has the game
+    // view; voiceEnd is a no-op on clients that never connected.
+    if (voiceConfigured()) this.broadcast({ t: "voiceEnd" });
     this.broadcast({
       t: "matchEnd",
       winningTeam,
@@ -390,11 +410,37 @@ export class GameRoom {
     return { id: card.id, suit: card.suit, rank: card.rank, label: cardLabel(card) };
   }
 
+  // Mint a team-scoped LiveKit access token for a connected human seat.
+  // Team is read from the seat (§2.2/§2.10), never from a client claim, so an
+  // opponent can never obtain a token for another team's room. Returns null when
+  // voice isn't configured or the seat isn't a connected human — callers must
+  // treat null as "no voice for this seat" (graceful no-op).
+  voiceTokenForSeat(seatIdx) {
+    const seat = this.seats[seatIdx];
+    if (!seat || !seat.isHuman || !seat.isConnected) return null;
+    if (!voiceConfigured()) return null;
+    const cfg = voiceConfig();
+    const room = voiceRoomName(this.roomId, seat.team);
+    const identity = `seat${seatIdx}-${seat.sessionId || "anon"}`;
+    return {
+      voiceUrl: cfg.url,
+      voiceRoom: room,
+      voiceTeam: seat.team,
+      voiceToken: makeLiveKitToken({
+        apiKey: cfg.apiKey,
+        apiSecret: cfg.apiSecret,
+        room,
+        identity,
+        name: seat.name,
+      }),
+    };
+  }
+
   // Per-recipient init: each human sees only their own hand (fog of war §3.4)
   sendInitTo(seatIdx) {
     const ws = this.sockets[seatIdx];
     if (!ws) return;
-    safeSend(ws, {
+    const payload = {
       t: "init",
       room: this.roomId,
       you: seatIdx,
@@ -417,13 +463,27 @@ export class GameRoom {
       totalTens: TOTAL_TENS,
       winTens: WIN_TENS,
       _ts: Date.now(),
-    });
+    };
+    // Voice is match-only: tokens are minted once the room is in PLAYING. They
+    // are NOT sent in the lobby. Reconnect re-mints a fresh token here too.
+    if (this.matchState === "PLAYING") {
+      const voice = this.voiceTokenForSeat(seatIdx);
+      if (voice) Object.assign(payload, voice);
+    }
+    safeSend(ws, payload);
   }
 
   // Fan out to all connected human sockets
   broadcast(msg) {
     const data = { ...msg, _ts: Date.now() };
     for (const seatIdx in this.sockets) safeSend(this.sockets[seatIdx], data);
+  }
+  // Fan out only to humans on a given team (for team chat — spec §1.2)
+  broadcastToTeam(team, msg) {
+    const data = { ...msg, _ts: Date.now() };
+    for (const seatIdx in this.sockets) {
+      if (this.seats[seatIdx].team === team) safeSend(this.sockets[seatIdx], data);
+    }
   }
   sendErrorTo(seatIdx, message) { safeSend(this.sockets[seatIdx], { t: "error", message }); }
 

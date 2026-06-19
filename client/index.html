@@ -73,6 +73,17 @@
         <div id="hand"></div>
         <div id="msg-bar" class="msg-bar hidden"></div>
       </footer>
+
+      <button id="chat-toggle" class="chat-toggle hidden">💬</button>
+      <button id="voice-toggle" class="voice-toggle hidden" aria-pressed="false" title="Mute / unmute your mic">🎙️ Mic On</button>
+      <aside id="chat-panel" class="hidden">
+        <div class="chat-header">Team Chat <span class="chat-team-label"></span></div>
+        <div id="chat-log"></div>
+        <div class="chat-input-row">
+          <input id="chat-input" type="text" maxlength="200" placeholder="Message your team…" />
+          <button id="chat-send">➤</button>
+        </div>
+      </aside>
     </section>
 
     <!-- End screen -->
@@ -85,6 +96,16 @@
       </div>
     </section>
   </div>
+  <!-- LiveKit browser SDK (team voice, §6.1). Loaded via CDN as a UMD bundle
+       and exposed as window.livekit. This is the ONLY client-side dependency;
+       the server remains zero-dependency. On failure the SDK simply isn't there
+       and the client degrades to silent (game still plays). -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.9/dist/livekit-client.umd.min.js"
+          onerror="window.livekit=null;"></script>
+  <script>
+    // The UMD global name has varied across versions (LiveKit / Livekit); accept either.
+    window.livekit = window.LiveKit || window.Livekit || null;
+  </script>
   <script src="/client.js"></script>
 </body>
 </html>

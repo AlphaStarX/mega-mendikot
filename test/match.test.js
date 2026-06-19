@@ -87,3 +87,80 @@ test("addHuman rejects when room is full (10 humans)", () => {
   const ws11 = { readyState: 1, send: () => {}, sessionId: "s11" };
   assert.equal(room.addHuman(ws11, "s11", "Overflow"), -1, "11th human rejected");
 });
+
+// ---------- voice (LiveKit, §6.1 / §2.13) ----------
+// A ws stub that captures every JSON message so tests can inspect the payload.
+function capturingWs(sessionId) {
+  const sent = [];
+  return { readyState: 1, sessionId, _sent: sent, send: (d) => sent.push(JSON.parse(d)) };
+}
+
+test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async () => {
+  const restore = fastTimers();
+  const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
+  delete process.env.LIVEKIT_API_KEY; delete process.env.LIVEKIT_API_SECRET; delete process.env.LIVEKIT_URL;
+  const room = new GameRoom("V1");
+  const ws = capturingWs("u1");
+  room.addHuman(ws, "u1", "Ann");
+  room.start();
+  const init = ws._sent.find((m) => m.t === "init");
+  assert.ok(init, "human received init");
+  assert.equal(init.voiceToken, undefined, "no voice token when unconfigured");
+  assert.equal(init.voiceRoom, undefined);
+  await realSleep(2000);
+  const ended = ws._sent.some((m) => m.t === "voiceEnd");
+  assert.equal(ended, false, "no voiceEnd emitted when voice was never configured");
+  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  restore();
+});
+
+test("with voice configured, connected humans get team-scoped tokens on start and voiceEnd on end", async () => {
+  const restore = fastTimers();
+  const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
+  process.env.LIVEKIT_API_KEY = "key-test";
+  process.env.LIVEKIT_API_SECRET = "secret-test-1234567890";
+  process.env.LIVEKIT_URL = "wss://lk.test";
+
+  const room = new GameRoom("V2");
+  const ws = capturingWs("u1");
+  const seat = room.addHuman(ws, "u1", "Ann");
+  assert.notEqual(seat, -1);
+  const team = room.seats[seat].team;
+
+  // Bots never receive tokens; only the human does.
+  room.start();
+  const init = ws._sent.find((m) => m.t === "init");
+  assert.ok(init, "human received init");
+  assert.equal(init.voiceUrl, "wss://lk.test");
+  assert.equal(init.voiceRoom, `mm_V2_${team}`, "token is for this human's team room");
+  assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part JWT");
+
+  await realSleep(8000);
+  assert.equal(room.matchState, "FINISHED", "match ended");
+  assert.ok(ws._sent.some((m) => m.t === "voiceEnd"), "voiceEnd broadcast at match end");
+
+  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  restore();
+});
+
+test("opposing-team humans are placed in different voice rooms", async () => {
+  const restore = fastTimers();
+  const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
+  process.env.LIVEKIT_API_KEY = "key-test";
+  process.env.LIVEKIT_API_SECRET = "secret-test-1234567890";
+  process.env.LIVEKIT_URL = "wss://lk.test";
+
+  const room = new GameRoom("V3");
+  const wsA = capturingWs("uA"), wsB = capturingWs("uB");
+  const sA = room.addHuman(wsA, "uA", "Ann");
+  const sB = room.addHuman(wsB, "uB", "Ben");
+  room.start();
+  const initA = wsA._sent.find((m) => m.t === "init");
+  const initB = wsB._sent.find((m) => m.t === "init");
+  assert.notEqual(initA.voiceRoom, initB.voiceRoom, "opponents get different voice rooms");
+  assert.notEqual(room.seats[sA].team, room.seats[sB].team, "sanity: they are on different teams");
+
+  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  restore();
+});
+

@@ -240,6 +240,24 @@ function handleMessage(ws, msg) {
         ws.room.start();
       }
       break;
+    case "chat":
+      if (ws.room && ws.seat !== null) ws.room.onChatFromSeat(ws.seat, msg.text || "");
+      break;
+    case "voiceToggle":
+      // Mute/unmute is client-local (the publishing client mutes its own mic
+      // track); the server only relays the teammate-facing HUD state so others
+      // see who's muted. Bot/spectator toggles are ignored.
+      if (ws.room && ws.seat !== null && ws.room.matchState === "PLAYING") {
+        const team = ws.room.seats[ws.seat] && ws.room.seats[ws.seat].team;
+        if (team) {
+          ws.room.broadcastToTeam(team, {
+            t: "voiceState",
+            seat: ws.seat,
+            muted: !!msg.muted,
+          });
+        }
+      }
+      break;
     case "ping": send(ws, { t: "pong" }); break;
   }
 }
