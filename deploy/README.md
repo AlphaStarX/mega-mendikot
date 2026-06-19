@@ -1,26 +1,30 @@
-# Deploying Mega Mendikot 5v5 on OVHcloud (Montreal)
+# Deploying Mega Mendikot 5v5 on DigitalOcean (Toronto)
 
 This is the **step-by-step runbook** for hosting the game + team voice (LiveKit) on a
-single OVHcloud VPS in Montreal, with automatic TLS via Caddy. Scope: **app + voice
-first** — Postgres/login is a later step (see "Next phase" at the bottom).
+single DigitalOcean Droplet in Toronto, with automatic TLS via Caddy. Scope:
+**app + voice + accounts** — Postgres/login is included (see "Next phase" at the bottom
+for stats/OAuth/etc.).
 
 > **Domain:** `mindikot.com` (registered at Porkbun). Hostnames:
 > `play.mindikot.com` (game) and `voice.mindikot.com` (LiveKit SFU).
 >
-> Target host: **OVHcloud VPS-1** (2 vCore / 4 GB / 40 GB NVMe, ~$7.60 CAD/mo),
-> region **Canada (Beauharnois/Montreal)**, **Debian 12**. Everything here runs as root
-> unless noted; switch to a non-root user in Phase 2.
+> Target host: **DigitalOcean Droplet** — Basic, 2 vCPU / 4 GB / 80 GB SSD,
+> **~$24/mo** (4 TB outbound bandwidth included), region **Toronto (TOR1)**,
+> **Debian 12**. New DigitalOcean accounts get **$200 free credit** (~8 months
+> covered). Everything here runs as root unless noted; switch to a non-root user
+> in Phase 2.
 
 ---
 
 ## Architecture on the box
 
 ```
-OVH Montreal VPS (Debian 12)
+DigitalOcean Droplet — Toronto TOR1 (Debian 12)
 ├── Caddy  (ports 80/443, automatic Let's Encrypt TLS)
 │     ├── play.<domain>   ─► app:3000          (HTTP + /ws WebSocket)
 │     └── voice.<domain>  ─► livekit:7880      (WSS signaling only)
-├── app: node server/index.js :3000            (the zero-dependency game)
+├── app: node server/index.js :3000            (the game server)
+├── db: postgres:16                            (accounts database)
 └── livekit: SFU + embedded TURN
         7880  TCP   signaling (fronted by Caddy)
         5349  TCP+UDP  TURN/TLS        ─┐
@@ -77,23 +81,26 @@ this check.
 
 ---
 
-## Phase 1 — Provision the OVH VPS
+## Phase 1 — Provision the DigitalOcean Droplet
 
-1. Sign in at **ovhcloud.com/en-ca** → **VPS** → order **VPS v1** (2 vCore / 4 GB).
-2. Choose:
-   - **Region: Canada** (Beauharnois / Montreal — lowest latency for Canadian players)
-   - **OS: Debian 12 (Bookworm)**
-   - **Billing: monthly**
-3. At checkout, add your **SSH public key** if you have one (recommended). Otherwise OVH
-   emails a root password.
-4. Wait for provisioning (~1–3 min). In the OVH dashboard, copy the **public IPv4**
-   (looks like `51.79.x.x` or `192.99.x.x`).
+1. Sign up at **[digitalocean.com](https://digitalocean.com)** (new accounts get
+   **$200 free credit** — ~8 months covered). Verify your email + add billing info
+   (required even to use credit).
+2. Create a Droplet: top-right **Create** → **Droplets**. Choose:
+   - **Image:** Debian 12 (x64) — under "Distributions"
+   - **Plan:** Basic → **Regular** → **$24/mo** (2 vCPU / 4 GB / 80 GB SSD, 4 TB transfer)
+   - **Datacenter region:** **Toronto (TOR1)** — lowest latency for Canadian players
+   - **Authentication:** **SSH Key** (add your public key — strongly recommended over a password). If you don't have one yet, generate it locally with `ssh-keygen -t ed25519` and paste the contents of `~/.ssh/id_ed25519.pub`.
+   - (Optional) Enable the free **Monitoring** and **Backups** add-ons.
+3. Click **Create Droplet**. Provisioning takes ~30–60 seconds.
+4. Copy the Droplet's **public IPv4** from the dashboard (looks like `159.203.x.x`
+   or `64.227.x.x`).
 
 ## Phase 2 — First login + harden the box
 
-7. SSH in:
+5. SSH in (DigitalOcean authenticates by SSH key, so no password prompt):
    ```bash
-   ssh root@<vps-ip>
+   ssh root@<your-ip>
    ```
 8. Update the system:
    ```bash
@@ -135,8 +142,12 @@ this check.
     ufw --force enable
     ufw status verbose
     ```
-    > OVH also has its own security group / firewall in the dashboard ("VPS firewall"
-    > under Network). If you enabled it, mirror these rules there too.
+    > ⚠️ **DigitalOcean also has a separate Cloud Firewall layer** (dashboard →
+    > **Networking → Firewalls**). If you attached a Cloud Firewall to the Droplet, it
+    > sits in front of UFW and will block traffic UFW allows — so you MUST add the same
+    > inbound rules there (especially the UDP `50000-60000` media range and `5349`).
+    > If you skipped the Cloud Firewall option at Droplet creation, you can ignore this
+    > and rely on UFW alone.
 
 ## Phase 4 — Get the code onto the box
 
@@ -251,8 +262,8 @@ docker compose down
 ```
 
 - **TLS renewals:** automatic (Caddy handles Let's Encrypt; certbot handles TURN cert).
-- **Backups:** enable OVH's automated VPS snapshot (dashboard → your VPS → Backups). It's
-  worth the small add-on fee once you have real players.
+- **Backups:** enable DigitalOcean's automated Droplet backups (dashboard → your Droplet →
+  Backups, ~20% of the Droplet price). Worth it once you have real players.
 
 ---
 
@@ -260,10 +271,10 @@ docker compose down
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `https://play.*` won't load / cert error | DNS not propagated, or port 80/443 blocked | Verify A records; check `ufw status`; check OVH VPS firewall |
+| `https://play.*` won't load / cert error | DNS not propagated, or port 80/443 blocked | Verify A records; check `ufw status`; check DigitalOcean Cloud Firewall |
 | Game loads, no 🎙️ button | App didn't get a voice token | Confirm `.env` has all three `LIVEKIT_*` vars and matches `livekit.yaml`; check `docker compose logs app` for "LiveKit" |
 | 🎙️ shows, but voice never connects | SFU unreachable, or secret mismatch | `curl http://localhost:7880` should respond; compare `key`/`secret` in `.env` vs `livekit.yaml` char-for-char |
-| Voice connects on same network, fails on mobile | TURN not working (cert/port) | Confirm `5349` and `50000-60000/udp` open in UFW **and** OVH firewall; confirm TURN cert is valid (not self-signed) |
+| Voice connects on same network, fails on mobile | TURN not working (cert/port) | Confirm `5349` and `50000-60000/udp` open in UFW **and** DigitalOcean Cloud Firewall; confirm TURN cert is valid (not self-signed) |
 | Opponents can hear each other | Should be impossible (structural isolation) | Check that each team's LiveKit room name differs: `mm_<roomId>_A` vs `mm_<roomId>_B`. If identical, the server isn't reading seat.team correctly. |
 | `docker compose up` errors on UDP range | Some Docker versions dislike 10000-port UDP ranges | Narrow `port_range_end` in livekit.yaml + compose to e.g. `50000-50100` (1 port per concurrent participant needed) |
 
@@ -285,9 +296,9 @@ Plus, in the repo root: `Dockerfile` (containerizes the zero-dep app) and `.dock
 
 ## Next phase (not in this pass)
 
-- **Postgres + Prisma** — add a `db` service to `docker-compose.yml`, set `DATABASE_URL`,
-  wire up the pending 🔶 persistence layer. The OVH VPS-1's 4 GB RAM fits Postgres fine.
-- **Login/auth** — replace the anonymous `sessionId` with a real token; the LiveKit token
-  issuance in `server/livekit.js` already keys off the seat/session, so it extends cleanly.
+- **Stats & match history** — already have the DB foundation; add columns to `User` written
+  at match end. The Droplet's 4 GB RAM fits Postgres comfortably.
+- **OAuth (Google/GitHub)** — layered on the existing JWT account system.
 - **Scaling** — when you outgrow one box: keep app+DB here, move LiveKit to a dedicated
-  instance; the `mm_{roomId}_{team}` topology is host-agnostic and needs no code change.
+  instance (or resize the Droplet up in the DigitalOcean panel — same IP, no code change);
+  the `mm_{roomId}_{team}` topology is host-agnostic.
