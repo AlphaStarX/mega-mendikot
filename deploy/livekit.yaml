@@ -35,7 +35,7 @@ rtc:
 turn:
   tls_port: 5349
   # Domain the TURN cert is issued for. Should resolve to this server.
-  domain: "voice.REPLACE_WITH_YOUR_DOMAIN"
+  domain: "voice.mindikot.com"
   # Cert/key for TURN/TLS. Mount them under deploy/certs/ (see docker-compose.yml).
   # If omitted, LiveKit generates a self-signed cert — browsers will usually
   # reject TURN/TLS with a self-signed cert, so provide real ones in production.

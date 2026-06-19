@@ -56,8 +56,8 @@ published on the livekit container, not on caddy.
      — Cloudflare's proxy doesn't forward WebRTC UDP. `play.*` can be proxied (orange).
 6. Wait for propagation, then verify from your own machine:
    ```bash
-   nslookup play.your-domain.com
-   nslookup voice.your-domain.com
+   nslookup play.mindikot.com
+   nslookup voice.mindikot.com
    # both should resolve to your VPS IP
    ```
 
@@ -115,10 +115,10 @@ published on the livekit container, not on caddy.
 13. As user `mm`, clone the repo:
     ```bash
     cd ~
-    git clone https://github.com/<you>/MegaMendiCoat.git
-    cd MegaMendiCoat/deploy
+    git clone https://github.com/AlphaStarX/mega-mendikot.git
+    cd mega-mendikot/deploy
     ```
-    (Or `scp -r deploy/ mm@<vps-ip>:~/MegaMendiCoat/` if you prefer not to clone.)
+    (Or `scp -r deploy/ mm@<vps-ip>:~/mega-mendikot/` if you prefer not to clone.)
 
 ## Phase 6 — Configure secrets
 
@@ -133,12 +133,12 @@ published on the livekit container, not on caddy.
     nano .env     # fill in the four REAL values below
     ```
     ```ini
-    PLAY_DOMAIN=play.your-domain.com
-    VOICE_DOMAIN=voice.your-domain.com
+    PLAY_DOMAIN=play.mindikot.com
+    VOICE_DOMAIN=voice.mindikot.com
     PUBLIC_IP=<vps-ip>
     LIVEKIT_API_KEY=<the key from step 14>
     LIVEKIT_API_SECRET=<the secret from step 14>
-    LIVEKIT_URL=wss://voice.your-domain.com
+    LIVEKIT_URL=wss://voice.mindikot.com
     ```
 16. Put the **same** `key` + `secret` into `livekit.yaml`, and your real voice domain:
     ```bash
@@ -161,10 +161,10 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 18. **Option B — issue a standalone cert with certbot** (cleaner, independent of Caddy):
     ```bash
     apt install -y certbot
-    certbot certonly --standalone -d voice.your-domain.com
+    certbot certonly --standalone -d voice.mindikot.com
     # Stop Caddy first if it's already holding port 80 during issuance.
-    cp /etc/letsencrypt/live/voice.your-domain.com/fullchain.pem ~/MegaMendiCoat/deploy/certs/turn.crt
-    cp /etc/letsencrypt/live/voice.your-domain.com/privkey.pem   ~/MegaMendiCoat/deploy/certs/turn.key
+    cp /etc/letsencrypt/live/voice.mindikot.com/fullchain.pem ~/mega-mendikot/deploy/certs/turn.crt
+    cp /etc/letsencrypt/live/voice.mindikot.com/privkey.pem   ~/mega-mendikot/deploy/certs/turn.key
     ```
     Then set up renewal (certbot installs a systemd timer by default). On renewal, copy
     the files again — or use `--deploy-hook` to automate the copy + `docker compose restart livekit`.
@@ -190,7 +190,7 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 
 ## Phase 9 — Verify end-to-end
 
-21. **Game loads:** open `https://play.your-domain.com` → you should see the join screen,
+21. **Game loads:** open `https://play.mindikot.com` → you should see the join screen,
     valid padlock (TLS works).
 22. **A match runs:** Quick Match → a game starts, cards play, bots work.
 23. **Voice works (same team):**
@@ -214,7 +214,7 @@ docker compose restart app                # restart the game (no rebuild)
 docker compose up -d --build app          # rebuild app after a code change
 
 # Deploy an app update:
-cd ~/MegaMendiCoat
+cd ~/mega-mendikot
 git pull
 cd deploy && docker compose up -d --build app
 
