@@ -4,7 +4,7 @@
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun; `play.mindikot.com` + `voice.mindikot.com`)
 > **Target host:** DigitalOcean Droplet, Toronto (TOR1), Debian 12, 2 vCPU / 4 GB
-> **Tests:** 26 passing (rules + auth + livekit)
+> **Tests:** 47 passing (rules + auth + livekit + bot)
 
 This document tracks what's been built, what's deployed, and what's next. Keep it
 updated as features ship.
@@ -32,7 +32,8 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   10×18 deal + 12-card kitty, follow-suit validation, trick resolution with trump-over-lead
   + duplicate-rule tiebreak, ten counting, win-at-13 / 12-12 deadlock.
 - **Bot AI** (`shared/bot.js`): full heuristic tree (lead L-1..4, follow F-1..3, trump
-  declaration T-1..2, endgame secure/desperation).
+  declaration T-1..2, endgame secure/desperation). Unit-tested in `test/bot.test.js`
+  (13 cases, one per heuristic + guards).
 - **Match lifecycle** (`server/game-room.js`): LOBBY → DEALING → PLAYING → FINISHED, lead
   selection, 20s turn timer with auto-play, trump establishment, per-trick kitty reveal,
   reconnection + bot takeover.
@@ -210,8 +211,11 @@ Phase 1 (auth) is done; the DB foundation is in place for these additive phases:
 | **6** | Friends list (add by ID, invite to room) | Medium-large |
 | **7** | Google/GitHub OAuth | Medium |
 
-**Standalone ideas:** bot unit tests, doc/version reconciliation
+**Standalone ideas:** doc/version reconciliation
 (README "15s"→20s timer, version drift), spectator mode, ranked seasons.
+
+> ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases). Was previously
+> listed here; it's done.
 
 > ✅ **Interactive tutorial** — shipped (see §2). Was previously listed here; it's done.
 
