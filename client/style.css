@@ -1,41 +1,94 @@
 :root {
   --felt: #0b6b3a;
-  --felt-dark: #074d29;
+  --felt-dark: #064022;
   --gold: #f5c542;
+  --gold-light: #ffe39a;
+  --gold-deep: #c9952a;
   --red: #d33;
   --black: #1a1a1a;
   --bg: #0a1f14;
+  --bg-deep: #030f08;
   --panel: #143a26;
   --text: #f4efe0;
   --muted: #9fb4a3;
   --teamA: #3a7bd5;
   --teamB: #d55b3a;
+  --wood: #3a1f10;       /* casino table rail */
+  --wood-light: #5a3520;
+  --spot: rgba(255,240,200,.06);   /* warm spotlight tint */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
 body {
-  background: radial-gradient(ellipse at center, var(--bg) 0%, #030f08 100%);
+  /* Monte Carlo floor: layered — warm spotlight pool over deep emerald, with a
+     faint diamond/damask pattern so the field isn't dead-flat. */
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 25%, var(--spot), transparent 70%),
+    repeating-linear-gradient(45deg, rgba(245,197,66,.018) 0 2px, transparent 2px 24px),
+    repeating-linear-gradient(-45deg, rgba(245,197,66,.018) 0 2px, transparent 2px 24px),
+    radial-gradient(ellipse at center, var(--bg) 0%, var(--bg-deep) 100%);
+  background-attachment: fixed;
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
   overflow: hidden;
   -webkit-user-select: none; user-select: none;
   touch-action: manipulation;
 }
+/* Vignette to focus attention center-screen. */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  box-shadow: inset 0 0 220px 40px rgba(0,0,0,.6);
+}
 
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
 .card-panel {
-  background: var(--panel);
+  position: relative;
+  background: linear-gradient(180deg, #18502f 0%, var(--panel) 100%);
   border: 2px solid var(--gold);
   border-radius: 18px;
   padding: 40px 48px;
   text-align: center;
   max-width: 92vw;
-  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  /* Soft warm glow halo + inner gold hairline (double-border effect). */
+  box-shadow:
+    0 0 0 1px rgba(245,197,66,.35),
+    0 0 40px rgba(245,197,66,.12),
+    0 20px 60px rgba(0,0,0,.55),
+    inset 0 0 0 1px rgba(245,197,66,.18);
+  z-index: 2;
 }
-.card-panel h1 { font-size: clamp(28px, 5vw, 44px); margin-bottom: 8px; letter-spacing: .5px; }
+/* Art-deco corner ornaments — small gold L-flourishes in each corner. */
+.card-panel::before,
+.card-panel::after {
+  content: ""; position: absolute; width: 16px; height: 16px; pointer-events: none;
+  border: 2px solid var(--gold);
+}
+.card-panel::before {
+  top: 8px; left: 8px;
+  border-right: none; border-bottom: none;
+  border-top-left-radius: 8px;
+}
+.card-panel::after {
+  bottom: 8px; right: 8px;
+  border-left: none; border-top: none;
+  border-bottom-right-radius: 8px;
+}
+.card-panel h1 {
+  font-size: clamp(28px, 5vw, 44px); margin-bottom: 8px; letter-spacing: 1.5px;
+  /* Gold gradient fill with a warm amber glow. */
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 55%, var(--gold-deep));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 22px rgba(245,197,66,.35);
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,.4));
+}
+/* The red "5v5" span keeps its solid red via its own color (gradient clip is on h1). */
+.card-panel h1 .red {
+  color: var(--red); -webkit-text-fill-color: var(--red);
+  text-shadow: 0 0 14px rgba(221,51,51,.45);
+}
 .card-panel h2 { margin-bottom: 14px; }
 .red { color: var(--red); }
 .tag { color: var(--muted); margin-bottom: 24px; font-size: 14px; }
@@ -45,12 +98,14 @@ body {
   background: #0a2417; color: var(--text); font-size: 16px; text-align: center;
 }
 .card-panel button, #rematch-btn {
-  background: linear-gradient(180deg, var(--gold), #d8a725);
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
   color: #2a1c00; border: none; padding: 12px 28px; border-radius: 10px;
-  font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 0 #9c7917;
+  font-size: 16px; font-weight: 700; cursor: pointer;
+  /* Top gleam (inset highlight) + depth shadow. */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 0 #9c7917, 0 6px 14px rgba(0,0,0,.35);
   transition: transform .05s; margin-top: 4px;
 }
-.card-panel button:active, #rematch-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #9c7917; }
+.card-panel button:active, #rematch-btn:active { transform: translateY(2px); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 2px 0 #9c7917; }
 .hint { color: var(--muted); margin-top: 18px; font-size: 13px; }
 .hint.tiny { font-size: 11px; margin-top: 6px; }
 
@@ -68,16 +123,29 @@ body {
 #auth-mode-toggle { text-align: center; margin-top: 14px; }
 #auth-mode-toggle a { color: var(--gold); text-decoration: underline; cursor: pointer; }
 
+/* In-match "Leave" button — fixed top-right corner, red, clear of the HUD. */
+.game-leave-btn {
+  position: fixed; top: 10px; right: 12px; z-index: 60;
+  background: rgba(80,12,12,.85); border: 1px solid var(--red); color: #ffd6d6;
+  padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.4); transition: background .15s, transform .05s;
+}
+.game-leave-btn:hover { background: var(--red); color: #fff; }
+.game-leave-btn:active { transform: translateY(1px); }
+
 /* Menu buttons */
 .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .menu-buttons button, .card-panel .primary, #join-code-btn {
-  background: linear-gradient(180deg, var(--gold), #d8a725);
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
   color: #2a1c00; border: none; padding: 12px 28px; border-radius: 10px;
-  font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 0 #9c7917;
+  font-size: 16px; font-weight: 700; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 0 #9c7917, 0 6px 14px rgba(0,0,0,.35);
   transition: transform .05s;
 }
 .menu-buttons button:not(.primary), #join-code-btn {
-  background: linear-gradient(180deg, #3a8c5a, #2a6b42); color: #fff; box-shadow: 0 4px 0 #1e4d2f;
+  background: linear-gradient(180deg, #46a069, #2a6b42);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 4px 0 #1e4d2f, 0 6px 12px rgba(0,0,0,.3);
 }
 .menu-buttons button:active, .card-panel .primary:active, #join-code-btn:active { transform: translateY(2px); }
 .join-code-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
@@ -107,6 +175,7 @@ body {
 #hud {
   display: flex; justify-content: space-between; align-items: center;
   width: 100%; max-width: 1100px; padding: 8px 16px; gap: 12px;
+  position: relative; /* anchors the .game-leave-btn */
 }
 .score { font-size: 18px; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; background: rgba(0,0,0,.25); }
 .score.team-a { border-left: 4px solid var(--teamA); }
@@ -127,9 +196,26 @@ body {
   height: min(58vh, 460px);
   background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
   border-radius: 50%;
-  border: 10px solid #4a2e15;
-  box-shadow: inset 0 0 60px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.5);
+  /* Use padding + a wrapper-style ring via box-shadow OUTSIDE the circle so the
+     mahogany rail + gold trim follow the curve (border-image would render square). */
+  box-shadow:
+    inset 0 0 70px rgba(0,0,0,.45),          /* felt vignette */
+    inset 0 0 0 3px rgba(245,197,66,.55),     /* gold trim ring (inside the rim) */
+    0 0 0 6px var(--wood),                    /* mahogany rail */
+    0 0 0 8px var(--wood-light),              /* rail highlight */
+    0 14px 40px rgba(0,0,0,.6);               /* drop shadow */
+  z-index: 2;
 }
+/* Faint center monogram (decorative spade), sits behind played cards/kitty. */
+#table::before {
+  content: "♠";
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 140px; color: rgba(255,255,255,.04);
+  pointer-events: none; z-index: 0;
+}
+/* The played-cards + kitty sit at z-index ≥ 1 so they render above the emblem. */
+#table > #center { z-index: 1; }
 
 .seat {
   position: absolute;
@@ -271,7 +357,10 @@ body {
 
 /* ---------- Team Chat ---------- */
 #chat-panel {
-  position: fixed; right: 8px; top: 56px; bottom: 108px; width: 248px;
+  position: fixed; right: 8px; top: 50%; width: 248px;
+  height: 40vh;            /* ~half the previous full-height span */
+  max-height: 360px;       /* cap on very tall screens */
+  transform: translateY(-50%);  /* vertically center on the right edge */
   background: rgba(20, 58, 38, .94); border: 1px solid var(--gold); border-radius: 12px;
   display: flex; flex-direction: column; z-index: 50;
   box-shadow: 0 8px 24px rgba(0,0,0,.5); overflow: hidden;
@@ -347,7 +436,7 @@ body {
   #table { height: 50vh; }
   #hud { font-size: 14px; }
   /* Chat: full-width slide-up drawer on mobile */
-  #chat-panel { left: 8px; right: 8px; width: auto; top: auto; bottom: 108px; height: 45vh; }
+  #chat-panel { left: 8px; right: 8px; width: auto; top: auto; bottom: 108px; height: 30vh; max-height: 280px; }
   .chat-toggle { display: flex; }
   #chat-panel.hidden { display: none; }
 }
