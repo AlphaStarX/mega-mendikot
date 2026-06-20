@@ -32,9 +32,9 @@ nine bots fill the remaining seats.
   highest card played.
 - **Kitty:** Over the first 12 tricks, one hidden kitty card is revealed per trick and
   captured by the trick winner. A kitty Ten counts toward your team's score.
-- **Turn timer:** 15s per play. Time out twice → marked AFK and auto-played.
+- **Turn timer:** 20s per play. Time out twice → marked AFK and auto-played.
 - **Win:** First to 13 Tens wins instantly. A 12-12 tie after all 18 tricks goes to the
-  team that won the final trick.
+  team that won the most tricks; a 9-9 trick tie is a draw.
 
 ---
 
@@ -49,8 +49,8 @@ nine bots fill the remaining seats.
 | §2.5 Follow-suit rule | `validatePlay` |
 | §2.6 Dynamic trump (first off-suit sets it; lead can't declare) | `playCard` |
 | §2.7 Trick resolution + "last identical wins" | `resolveTrickWinner` |
-| §2.8 Win at 13 / 12-12 deadlock by last trick | `resolveTrick` + `endMatch` |
-| §2.9 Turn timer (15s) + AFK (2 timeouts) | `tick` / `handleTimeout` |
+| §2.8 Win at 13 / 12-12 deadlock (most tricks, v1.3.1) | `resolveTrick` + `resolveDeadlock` + `endMatch` |
+| §2.9 Turn timer (20s) + AFK (2 timeouts) | `tick` / `handleTimeout` |
 | §3.4 Fog of war (opponent hands hidden) | only your hand is sent in `init` |
 | §4 Bot heuristics (L-1..4, F-1..3, T-1..2) | `shared/bot.js` |
 | §4.4 Reconnection + bot takeover | `onHumanDisconnect` / `onHumanReconnect` |

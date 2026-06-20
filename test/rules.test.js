@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDeck, shuffle, dealHands, validatePlay, resolveTrickWinner, countTens,
-  autoPlayPick, DECK_SIZE, HAND_SIZE, KITTY_SIZE, TOTAL_TENS, WIN_TENS, teamForSeat,
+  autoPlayPick, resolveDeadlock, DECK_SIZE, HAND_SIZE, KITTY_SIZE, TOTAL_TENS, WIN_TENS, teamForSeat,
 } from "../shared/rules.js";
 
 test("deck is 192 cards, 6 of each card, all ranks 7..14", () => {
@@ -78,4 +78,16 @@ test("autoPlayPick follows suit with lowest when possible", () => {
 
 test("tens in full deck total 24 (4 suits x 6 decks)", () => {
   assert.equal(countTens(buildDeck()), TOTAL_TENS);
+});
+
+// --- 12-12 deadlock resolution (v1.3.1 rule change: most tricks wins) ---
+
+test("resolveDeadlock: more tricks won -> that team wins", () => {
+  assert.equal(resolveDeadlock(10, 8), "A", "A wins with more tricks");
+  assert.equal(resolveDeadlock(7, 11), "B", "B wins with more tricks");
+});
+
+test("resolveDeadlock: equal tricks -> draw (null)", () => {
+  assert.equal(resolveDeadlock(9, 9), null, "9-9 tricks is a draw");
+  assert.equal(resolveDeadlock(0, 0), null, "0-0 is also a draw (degenerate)");
 });

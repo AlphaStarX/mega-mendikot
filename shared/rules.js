@@ -97,6 +97,17 @@ export function countTens(cards) {
   return cards.reduce((n, c) => n + (isTen(c) ? 1 : 0), 0);
 }
 
+// Resolve the 12-12 deadlock (post-rule-change, v1.3.1): when all 18 tricks are
+// played and the Ten count is tied, the winner is the team that captured the
+// MOST tricks. If tricks are tied too, the match is a DRAW (returns null).
+//   tricksA / tricksB: total tricks (0..18) won by each team.
+//   Returns "A" | "B" | null (null = draw).
+export function resolveDeadlock(tricksA, tricksB) {
+  if (tricksA > tricksB) return "A";
+  if (tricksB > tricksA) return "B";
+  return null; // both Tens and tricks tied — no winner
+}
+
 // Auto-play picker for AFK / timeout (spec §2.9). Returns a card from hand.
 export function autoPlayPick(hand, leadSuit, trumpSuit) {
   if (!hand.length) throw new Error("empty hand");

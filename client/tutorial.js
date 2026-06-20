@@ -288,7 +288,7 @@ function setupWinningDemo(host) {
        <div class="tut-team b"><span class="dot b"></span> Team B<div class="tut-bar"><div class="tut-fill b" style="width:85%"></div></div><b>11</b></div>
      </div>
      <p class="tut-feedback ok">🏆 Team A reaches <b>13</b> and wins <b>instantly</b> — the remaining tricks aren't played. 13 of 24 Tens is all it takes.</p>
-     <p class="tut-sub">If instead it ended <b>12–12</b>, the winner of the <b>final trick</b> takes the match.</p>`;
+     <p class="tut-sub">If instead it ended <b>12–12</b>, the team that won the <b>most tricks</b> takes the match.</p>`;
   return () => {};
 }
 
@@ -400,7 +400,7 @@ const RULES = [
        <p class="tut-callout">The first team to capture <b>13 of the 24 Tens</b> wins the match <b>immediately</b>.</p>
        <p>This is checked at the end of every trick. A captured <b>kitty Ten</b> also counts and can trigger the instant win.</p>
        <h4>The 12–12 deadlock</h4>
-       <p>If all 18 tricks are played and the score is tied <b>12–12</b> (the only possible tie), the team that won the <b>18th (final) trick</b> wins.</p>
+       <p>If all 18 tricks are played and the score is tied <b>12–12</b> (the only possible Ten-count tie), the team that won the <b>most tricks</b> wins. If tricks are tied too (9–9), it's a <b>draw</b>.</p>
        <p>There are <b>no draws</b> — every match has one clear winner.</p>`,
   },
   {
@@ -467,7 +467,7 @@ const RULES = [
        <details><summary>Two players both played the Ace of Hearts — who wins?</summary><p>The one who played it <b>last</b> (the Duplicate Rule).</p></details>
        <details><summary>My Ace of Diamonds didn't win — why?</summary><p>It was a <b>discard</b> (neither Lead Suit nor Trump). Discards can never win, no matter their rank.</p></details>
        <details><summary>Does a Ten from the kitty count?</summary><p><b>Yes</b> — immediately, and it can even trigger the instant 13-Ten win.</p></details>
-       <details><summary>What if it's 12–12 after all 18 tricks?</summary><p>The team that won the <b>final trick</b> wins the match.</p></details>`,
+       <details><summary>What if it's 12–12 after all 18 tricks?</summary><p>The team that won the <b>most tricks</b> wins; if tricks are also tied, it's a draw.</p></details>`,
   },
   {
     id: "quickstart", title: "Quick Start", icon: "⚡",
@@ -485,7 +485,7 @@ const RULES = [
          <li>Clockwise — <b>follow suit if able</b>; else off-suit (first off-suit sets Trump).</li>
          <li>Highest <b>Trump</b> wins, else highest <b>Lead Suit</b>; ties → <b>last played</b>.</li>
        </ol>
-       <p class="tut-callout">🎯 First to <b>13 Tens</b> wins. 12–12 → winner of last trick.</p>
+       <p class="tut-callout">🎯 First to <b>13 Tens</b> wins. 12–12 → team with most tricks wins.</p>
        <h4>5 rules to remember</h4>
        <ol class="tut-list">
          <li>✅ Follow suit if you have it.</li>

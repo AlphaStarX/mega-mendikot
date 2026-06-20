@@ -4,7 +4,7 @@
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun; `play.mindikot.com` + `voice.mindikot.com`)
 > **Target host:** DigitalOcean Droplet, Toronto (TOR1), Debian 12, 2 vCPU / 4 GB
-> **Tests:** 47 passing (rules + auth + livekit + bot)
+> **Tests:** 49 passing (rules + auth + livekit + bot)
 
 > ⚠️ **AGENT GROUND RULES — read before doing anything**
 > - **Never `git push` without explicit user permission.** Committing locally is fine,

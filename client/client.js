@@ -509,10 +509,20 @@ function onMatchEnd(m) {
   stopTurnCountdown(); // stop the decorative turn-timer ring
   state.activeSeat = -1;
   const me = m.seats.find((s) => s.seat === state.you);
-  const myTeamWon = me && me.team === m.winningTeam;
-  $("end-title").textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
-  $("end-title").style.color = myTeamWon ? "var(--gold)" : "var(--red)";
-  $("end-score").textContent = `Team ${m.winningTeam} wins  ·  A ${m.score.A} – ${m.score.B} B`;
+  const title = $("end-title");
+  const scoreLine = $("end-score");
+  if (m.draw || !m.winningTeam) {
+    // 12-12 deadlock where tricks were also tied — a genuine draw, no winner.
+    title.textContent = "🤝 Draw";
+    title.style.color = "var(--gold)";
+    scoreLine.textContent = `Draw  ·  A ${m.score.A} – ${m.score.B} B` +
+      (m.tricksWon ? `  (tricks ${m.tricksWon.A}–${m.tricksWon.B})` : "");
+  } else {
+    const myTeamWon = me && me.team === m.winningTeam;
+    title.textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
+    title.style.color = myTeamWon ? "var(--gold)" : "var(--red)";
+    scoreLine.textContent = `Team ${m.winningTeam} wins  ·  A ${m.score.A} – ${m.score.B} B`;
+  }
   const bd = $("end-breakdown");
   bd.innerHTML = "<h3 style='margin:14px 0 8px;font-size:14px;color:var(--muted)'>Tens captured</h3>";
   m.seats.sort((a, b) => a.seat - b.seat).forEach((s) => {

@@ -129,6 +129,14 @@ Card `rank` follows the authoritative scale in §2.1 (7 = lowest, 14 = Ace = hig
 * **Immediate-Win**: The first team to capture **13 out of the 24 Tens** wins the match immediately. The match terminates, and players are routed to the post-game summary screen. This check runs at every trick resolution — including tricks where a revealed kitty Ten pushes a team to 13 (see §2.3.5).
 * **The 12-12 Deadlock**: In the event of a 12-12 tie after all cards are played, the victory is awarded to the team that **captured the 18th and final trick** of the match. *(Because 24 Tens are always fully captured by match end and 13 is the win threshold, 12-12 is the only tie split mathematically possible — every other full-depletion split already produced a 13+ winner.)*
 
+> **⚠️ AMENDMENT (v1.3.1, 2026-06-20):** The deadlock rule above is **superseded**.
+> The tiebreaker is now **most tricks won**: on a 12-12 Ten tie after all 18 tricks,
+> the team that captured the **most tricks** wins. If the trick count is also tied
+> (9–9), the match ends in a **draw** (no winner). Implementation: `resolveDeadlock()`
+> in `shared/rules.js`; per-team trick counter `tricksWon` tracked in `game-room.js`.
+> Player-facing docs (`RULEBOOK.md`, tutorial) reflect the new rule; this spec text
+> is retained as the historical "as-originally-designed" record.
+
 ### 2.9 Turn Timer & AFK Engine
 To maintain multiplayer momentum across a 10-player table, an authoritative turn timer is enforced server-side. The `GameState.turnTimeRemaining` field (§3.3) is the network-visible surface of this engine.
 

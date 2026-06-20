@@ -1,4 +1,5 @@
-// Mega Mindikot 5v5 — authoritative game room (master spec v1.3.0)
+// Mega Mindikot 5v5 — authoritative game room (master spec v1.3.0 + v1.3.1
+// deadlock rule change: most-tricks-won tiebreak instead of last trick)
 // Multi-human: up to 10 humans per room, bots fill empty seats.
 // Owns the full match lifecycle: matchmaking, dealing, kitty, turn timer,
 // trump establishment, trick resolution, bot fill, win/deadlock, reconnection.
@@ -6,7 +7,7 @@
 import {
   PLAYERS, HAND_SIZE, TRICKS, KITTY_SIZE, KITTY_TRICKS, WIN_TENS, TOTAL_TENS,
   buildDeck, shuffle, dealHands, validatePlay, resolveTrickWinner, countTens,
-  autoPlayPick, teamForSeat, isTen,
+  autoPlayPick, teamForSeat, isTen, resolveDeadlock,
 } from "../shared/rules.js";
 import { selectBotPlayCard } from "../shared/bot.js";
 import { makeLiveKitToken, voiceConfigured, voiceConfig, voiceRoomName } from "./livekit.js";
@@ -57,7 +58,8 @@ export class GameRoom {
     this.playedCards = [];        // current trick
     this.activeSeat = -1;
     this.leadSeat = -1;
-    this.lastTrickWinnerTeam = null; // for 12-12 deadlock (§2.8)
+    this.lastTrickWinnerTeam = null; // team that won the most recent trick
+    this.tricksWon = { A: 0, B: 0 }; // tricks captured per team (deadlock tiebreak)
 
     this.score = { A: 0, B: 0 };
     this.turnTime = TURN_SECONDS;
@@ -275,6 +277,7 @@ export class GameRoom {
     const winSeat = winner.seat;
     const winTeam = this.seats[winSeat].team;
     this.lastTrickWinnerTeam = winTeam;
+    this.tricksWon[winTeam]++;   // tracked for the 12-12 deadlock tiebreak
 
     // Tens captured from played cards
     let tens = countTens(this.playedCards.map((p) => p.card));
@@ -310,10 +313,12 @@ export class GameRoom {
 
     // All tricks played?
     if (this.trickNumber >= TRICKS) {
-      // 12-12 deadlock (§2.8): last-trick winner takes it
+      // 12-12 deadlock (rule change, v1.3.1): most tricks won takes it; if
+      // tricks are also tied, the match is a draw (endMatch(null)).
       if (this.score.A === this.score.B) {
-        this.log.push(`12-12 deadlock resolved by last-trick winner: team ${this.lastTrickWinnerTeam}.`);
-        return this.endMatch(this.lastTrickWinnerTeam);
+        const dl = resolveDeadlock(this.tricksWon.A, this.tricksWon.B);
+        this.log.push(`12-12 deadlock resolved by most tricks (A:${this.tricksWon.A} B:${this.tricksWon.B}) -> ${dl === null ? "DRAW" : "team " + dl}.`);
+        return this.endMatch(dl);
       }
       return this.endMatch(this.score.A > this.score.B ? "A" : "B");
     }
@@ -348,11 +353,17 @@ export class GameRoom {
     if (voiceConfigured()) this.broadcast({ t: "voiceEnd" });
     this.broadcast({
       t: "matchEnd",
-      winningTeam,
+      winningTeam,            // "A" | "B" | null (null = draw)
+      draw: winningTeam === null,
       score: this.score,
+      tricksWon: { ...this.tricksWon },
       seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot })),
     });
-    this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
+    if (winningTeam === null) {
+      this.log.push(`Match ended in a DRAW. Final ${JSON.stringify(this.score)} tricks ${JSON.stringify(this.tricksWon)}.`);
+    } else {
+      this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
+    }
   }
 
   // --- reconnection (spec §4.4) ---
@@ -369,11 +380,11 @@ export class GameRoom {
     if (!this.privateRoom && this.matchState === "PLAYING" && this.humanCount() === 0) {
       this.log.push(`Last human left quick-match room; ending match early.`);
       const winner = this.score.A === this.score.B
-        ? (this.lastTrickWinnerTeam || "B")   // tie → last trick winner, neutral default
+        ? resolveDeadlock(this.tricksWon.A, this.tricksWon.B)  // tied -> most tricks, else draw
         : (this.score.A > this.score.B ? "A" : "B");
       this.clearBot();
       this.stopTurnTimer();
-      this.endMatch(winner);
+      this.endMatch(winner);   // may be null (draw) if both tens & tricks tied
       return;
     }
 

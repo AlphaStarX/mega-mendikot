@@ -149,18 +149,19 @@ There's no separate "defeat" rule. If your team does **not** reach 13 Tens first
 
 ### 3.3 The 12-12 Deadlock (Tiebreaker)
 
-What if all 18 tricks are played and the score is tied **12–12**? (This is the **only tie possible** — since there are 24 Tens total and 13 is the win target, 12-12 is the only split that doesn't already produce a 13+ winner.)
+What if all 18 tricks are played and the score is tied **12–12**? (This is the **only Ten-count tie possible** — since there are 24 Tens total and 13 is the win target, 12-12 is the only split that doesn't already produce a 13+ winner.)
 
-> **If the final score is 12-12, the team that won the 18th (final) trick wins the match.**
+> **If the final score is 12-12, the team that won the MOST tricks wins the match.** (With 18 tricks total, one team usually captured more than the other.)
 
 **Example — Deadlock:**
-> After all 18 tricks, the score is tied 12–12. The team that captured the very last trick (trick 18) is declared the winner.
+> After all 18 tricks, the score is tied 12–12. Team A won 11 tricks and Team B won 7, so Team A is declared the winner.
 
-### 3.4 No Draws
+### 3.4 Draws (rare)
 
-A draw is **impossible**. Every match ends with one clear winner:
-- Either a team hits 13 Tens mid-match, **or**
-- The score is decided after 18 tricks (with the 12-12 tiebreaker if needed).
+A draw is possible but **very rare**. It happens only when *both* the Ten count **and** the trick count are tied — i.e. 12–12 in Tens *and* 9–9 in tricks:
+- A team hits 13 Tens mid-match, **or**
+- The score is decided after 18 tricks (with the 12-12 most-tricks tiebreaker if needed), **or**
+- Extremely rarely, both Tens and tricks tie exactly and the match ends in a **draw** with no winner.
 
 ---
 
@@ -743,9 +744,9 @@ These rules cover exceptions, edge cases, and advanced interactions. When a situ
 
 ### 11.4 The 12-12 Deadlock
 
-**Rule:** If all 18 tricks are played and the score is tied 12-12, the **team that won the 18th (final) trick** wins the match.
+**Rule:** If all 18 tricks are played and the score is tied 12-12, the **team that won the MOST tricks** wins the match. If the trick count is also tied (9–9), the match ends in a **draw**.
 
-**Why this is the only possible tie:** With 24 Tens total and 13 as the win target, 12-12 is the **only** full-depletion split that doesn't already produce a 13+ winner. Every other split ends with an instant win earlier.
+**Why 12-12 is the only Ten-count tie:** With 24 Tens total and 13 as the win target, 12-12 is the **only** full-depletion split that doesn't already produce a 13+ winner. Every other split ends with an instant win earlier.
 
 ### 11.5 AFK Auto-Play Priority
 
@@ -810,7 +811,7 @@ Because the game is strictly **turn-based** (one player acts at a time, in fixed
 **A:** The system **auto-plays** a card for you — the safest option (lowest Lead Suit card, or lowest non-trump off-suit, or lowest of your most-held suit). Time out **twice in a row** and you're flagged AFK (auto-played instantly until you play manually).
 
 **Q9: What if the score is 12-12 after all 18 tricks?**
-**A:** The team that won the **18th (final) trick** wins the match.
+**A:** The team that won the **most tricks** wins. If the trick count is also tied (9–9), the match is a **draw**.
 
 **Q10: Can the match end before all 18 tricks?**
 **A:** Yes! The moment a team reaches **13 Tens**, the match ends **immediately**, even if it's only trick 5.
@@ -856,7 +857,7 @@ Because the game is strictly **turn-based** (one player acts at a time, in fixed
 ### Win Condition
 
 > **First team to capture 13 of the 24 Tens wins — instantly.**
-> If it's 12-12 after 18 tricks, the **winner of the last trick** wins.
+> If it's 12-12 after 18 tricks, the team that won the **most tricks** wins (a 9-9 trick tie is a draw).
 
 ### 5 Key Rules to Remember
 
