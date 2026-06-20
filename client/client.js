@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — web client (no build step; vanilla JS)
+// Mega Mindikot 5v5 — web client (no build step; vanilla JS)
 "use strict";
 
 const SUIT_GLYPH = { SPADES: "♠", HEARTS: "♥", DIAMONDS: "♦", CLUBS: "♣" };
@@ -90,11 +90,19 @@ const state = {
 // the `join` until the server confirms (so an authenticated user reclaims by
 // their stable DB id). Guests send join immediately on open.
 function connect(name, opts = {}) {
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  state.ws = new WebSocket(`${proto}://${location.host}/ws`);
   state.pendingMode = opts.mode || "quick";
   state.pendingRoomId = opts.roomId || null;
   state.pendingName = name;
+
+  // If the existing socket (e.g. from signup/login) is open and authenticated,
+  // reuse it — just send the join on it. Avoids duplicate-socket confusion.
+  if (state.ws && state.ws.readyState === 1 && state.authenticated) {
+    sendJoin(state.userName || name, state.pendingMode, state.pendingRoomId);
+    return;
+  }
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  state.ws = new WebSocket(`${proto}://${location.host}/ws`);
   state.ws.onopen = () => {
     if (state.token) {
       // Defer join until authenticate resolves; send it now.
@@ -177,6 +185,9 @@ function onAuthOk(m) {
     sendJoin(p.name, p.mode, p.roomId);
   }
   refreshAuthUI();
+  // Switch back to the join screen so the user sees they're signed in.
+  showScreen("join-screen");
+  showMsg(`Welcome, ${state.userName}!`);
 }
 
 function onAuthError(m) {
@@ -534,9 +545,9 @@ function refreshAuthUI() {
       if (link) link.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
     }
     if (guestActions) guestActions.classList.add("hidden");
-    // Prefill the name field with the account name so guests don't have to type it.
+    // Always set the name field to the account name (don't leave a stale guest name).
     const nameInput = $("name-input");
-    if (nameInput && !nameInput.value.trim()) nameInput.value = state.userName;
+    if (nameInput) nameInput.value = state.userName;
   } else {
     if (welcome) welcome.classList.add("hidden");
     if (guestActions) guestActions.classList.remove("hidden");
@@ -824,6 +835,15 @@ $("lobby-leave-btn").addEventListener("click", () => {
   stopTurnCountdown();
   if (state.ws) state.ws.close();
   state.room = null; state.you = null;
+  showScreen("join-screen");
+});
+// In-match "Leave" button — same teardown as lobby leave.
+$("game-leave-btn").addEventListener("click", () => {
+  disconnectVoice();
+  stopTurnCountdown();
+  if (state.ws) state.ws.close();
+  state.room = null; state.you = null;
+  showChatPanel(false);
   showScreen("join-screen");
 });
 $("rematch-btn").addEventListener("click", () => {

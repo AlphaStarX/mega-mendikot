@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — authoritative game room (master spec v1.3.0)
+// Mega Mindikot 5v5 — authoritative game room (master spec v1.3.0)
 // Multi-human: up to 10 humans per room, bots fill empty seats.
 // Owns the full match lifecycle: matchmaking, dealing, kitty, turn timer,
 // trump establishment, trick resolution, bot fill, win/deadlock, reconnection.
@@ -362,6 +362,21 @@ export class GameRoom {
     seat.isConnected = false;
     seat.disconnectAt = Date.now();
     delete this.sockets[seatIdx];
+
+    // Quick-match (non-private) rooms are throwaway: if no humans remain connected,
+    // end the match immediately so the room gets cleaned up instead of playing out
+    // a pointless all-bot game and lingering. Private rooms persist for friends.
+    if (!this.privateRoom && this.matchState === "PLAYING" && this.humanCount() === 0) {
+      this.log.push(`Last human left quick-match room; ending match early.`);
+      const winner = this.score.A === this.score.B
+        ? (this.lastTrickWinnerTeam || "B")   // tie → last trick winner, neutral default
+        : (this.score.A > this.score.B ? "A" : "B");
+      this.clearBot();
+      this.stopTurnTimer();
+      this.endMatch(winner);
+      return;
+    }
+
     if (this.matchState !== "PLAYING") return;
     if (this.activeSeat === seatIdx) this.maybeScheduleBot();
     // grace timer: after RECONNECT_GRACE_MS, seat stays bot-controlled (no penalty)
