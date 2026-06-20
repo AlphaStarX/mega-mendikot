@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — bot engine (master spec §4 heuristics, v1.3.0 numbering)
+// Mega Mindikot 5v5 — bot engine (master spec §4 heuristics, v1.3.0 numbering)
 // Pure function of game snapshot. Imported by server.
 
 import { resolveTrickWinner, SUITS } from "./rules.js";

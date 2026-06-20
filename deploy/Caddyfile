@@ -1,4 +1,4 @@
-# Caddy — TLS termination + reverse proxy for Mega Mendikot 5v5.
+# Caddy — TLS termination + reverse proxy for Mega Mindikot 5v5.
 #
 # {$PLAY_DOMAIN} and {$VOICE_DOMAIN} are read from the environment (set in .env),
 # so this file needs no editing per deployment.

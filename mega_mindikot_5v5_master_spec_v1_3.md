@@ -1,9 +1,18 @@
 # MEGA MENDIKOT 5V5: MASTER SPECIFICATION BLUEPRINT
 
 **Production-Ready Specification Suite for Executive & Design Director Review**  
-**Document Version:** 1.3.0  
+**Document Version:** 1.3.1  
 **Target Platforms:** Web (Desktop/Mobile Browsers), iOS, Android (via Capacitor)  
 **Author:** Lead Technical Game Architect, Antigravity Studio
+
+---
+
+## Changes from 1.3.0
+
+- **Turn timer updated to 20s.** §2.9 now specifies **20 seconds** per turn (was 15s) to reduce pressure and accommodate the larger 10-player table. The visible countdown ring was removed from the UI; the timer is now invisible to players (server-enforced auto-play only).
+- **New §2.11 — Multiplayer Lobby & Matchmaking (Current Implementation).** Documents the shipped lobby system: Quick Match (auto-fill with bots), Private Rooms (4-char codes + shareable links), room registry, team-balancing seat assignment, and session-based reconnection.
+- **New §2.12 — Deployment.** Documents the Render deployment: zero-dependency single process, single-port HTTP+WebSocket, `render.yaml` Blueprint, live at `https://mega-mindikot.onrender.com`.
+- **§6.1 Scope Matrix updated** to reflect which MVP features are shipped vs. pending.
 
 ---
 
@@ -22,7 +31,7 @@
 ## 1. Executive Summary & Core Pillars
 
 ### 1.1 Game Concept
-**Mega Mendikot 5v5** is a massive-scale, team-based trick-taking card game inspired by the traditional Indian card game *Mendikot*. Pitting two teams of five players against each other in a high-stakes, fast-paced battle of communication, card counting, and tactical synchronization, it scales up traditional trick-taking mechanics for modern multiplayer platforms.
+**Mega Mindikot 5v5** is a massive-scale, team-based trick-taking card game inspired by the traditional Indian card game *Mendikot*. Pitting two teams of five players against each other in a high-stakes, fast-paced battle of communication, card counting, and tactical synchronization, it scales up traditional trick-taking mechanics for modern multiplayer platforms.
 
 With 6 modified decks (192 cards total) in play, players must track duplicate cards, manage a dynamically established trump suit, coordinate plays in real time, and capture the valuable **10s** (Mendis) to win the match.
 
@@ -123,8 +132,8 @@ Card `rank` follows the authoritative scale in §2.1 (7 = lowest, 14 = Ace = hig
 ### 2.9 Turn Timer & AFK Engine
 To maintain multiplayer momentum across a 10-player table, an authoritative turn timer is enforced server-side. The `GameState.turnTimeRemaining` field (§3.3) is the network-visible surface of this engine.
 
-* **Turn Duration**: **15 seconds** per active seat. The server decrements `turnTimeRemaining` once per second during the `PLAYING` state.
-* **Visual Warning**: At **5 seconds remaining**, the server emits a turn-warning event; the client flashes the active player's avatar ring red and plays a low-frequency ticking sound.
+* **Turn Duration**: **20 seconds** per active seat. The server decrements `turnTimeRemaining` once per second during the `PLAYING` state.
+* **Invisible Timer**: The visible countdown ring was removed from the client UI. The timer is enforced server-side only — players see no on-screen countdown. The server still emits a turn-warning event at 5 seconds remaining (available for future UI/sound hooks), but the current client does not render it.
 * **Auto-Play Rule (timer reaches 0)**: The server plays a card automatically for the active player using this deterministic order:
   1. If the player holds cards of the **Lead Suit**, play the **lowest `rank`** card of that suit.
   2. Else if the player cannot follow suit and **Trump is already established**, play the **lowest `rank` off-suit card excluding trumps** (to avoid wasting trumps).
@@ -139,15 +148,65 @@ Matchmaking forms two teams of five. A matched **party** (1–5 players queued t
 
 The matchmaker assigns each joining party a team and the specific seats within that team before the `MatchRoom` opens; the room must accept the team/seat assignment from the matchmaker payload rather than deriving it from client join order. Two parties (or party + solo fills) totaling 10 players always map cleanly to one full Team A and one full Team B.
 
+### 2.11 Multiplayer Lobby & Matchmaking (Current Implementation)
+
+> This section documents the **shipped** lobby system. The party/MMR/Redis matchmaking described in §3.5 remains the target for ranked play; the system below is the current production implementation.
+
+The game supports real-time human multiplayer with bot fill via a room-based lobby system.
+
+#### Quick Match
+1. A player clicks **Quick Match** → the server finds an open room in `LOBBY` state with fewer than 10 humans (`findOpenRoom()`), or creates a new one.
+2. The player is seated via `nextOpenSeat()` (see Seat Assignment below).
+3. A **fill timer** (`FILL_TIMER_MS`, default 20000ms) starts when the first human joins. If the room doesn't fill to 10 humans before the timer expires, the remaining seats stay as bots and the match **auto-starts**. This ensures solo players always get a game without waiting indefinitely.
+4. If the room fills to 10 humans before the timer, the host may start immediately.
+
+#### Private Rooms
+1. A player clicks **Create Private Room** → the server generates a **4-character room code** (ambiguous characters omitted: no `0`/`O`/`1`/`I`) and creates a private room.
+2. The host sees the code and a **shareable link** (`https://<host>/?room=XXXX`).
+3. Friends join by entering the code or opening the link. Private rooms **do not** auto-start — the host clicks **Start Game** manually (so friends have time to gather).
+4. URL deep-linking: the client reads `?room=XXXX` from `location.search` and auto-fills the join code.
+
+#### Room Registry
+* The server maintains a `Map<roomId, GameRoom>` of all active rooms.
+* Rooms in `LOBBY` state with **zero humans** are cleaned up after 30 seconds. Rooms in `FINISHED` state are cleaned up immediately.
+* Each connection gets its own session; multiple browser tabs play independent matches.
+
+#### Seat Assignment
+Humans are seated by `nextOpenSeat()`, which:
+1. Counts humans on each team.
+2. Prefers the team with **fewer humans** (to balance teams as players join).
+3. Within that team, picks the **lowest seat index** that is currently a bot.
+Bots occupy all remaining seats. This produces balanced teams regardless of join order, and the game is always playable — even with just 1 human.
+
+#### Reconnection
+* Each client generates a persistent `sessionId` stored in `sessionStorage`.
+* On disconnect, the seat is marked `isConnected = false` and a **60-second grace timer** starts. If the active seat belongs to the disconnected player, a bot takes over their turn.
+* On reconnect (same `sessionId`), the server reclaims the original seat, cancels the grace timer, and re-syncs the full game state to the client (personalized hand + table state).
+
+### 2.12 Deployment
+
+The game is deployed as a **zero-dependency single Node.js process** on Render.
+
+* **Runtime**: Node 18+ with no external dependencies (the WebSocket server is hand-implemented per RFC 6455 on top of `node:http` + `node:crypto`).
+* **Binding**: The server binds `0.0.0.0` and reads `PORT` from the environment (`process.env.PORT`), making it container- and cloud-ready.
+* **Single-Port Architecture**: HTTP (static client) and WebSocket (`/ws` upgrade path) share one port. This is reverse-proxy friendly — no separate WS port configuration needed.
+* **Client Portability**: The client derives the WebSocket URL from `location.host` and auto-switches to `wss://` on HTTPS, so it works on any public domain without code changes.
+* **Render Blueprint**: `render.yaml` in the repo root describes the service for one-click deployment (env: `NODE_VERSION`, `FILL_TIMER_MS`).
+* **Live URL**: `https://mega-mindikot.onrender.com`
+* **HTTPS & WebSocket**: Render provides TLS automatically; the `wss://` connection works out of the box.
+* **Free Tier**: The free plan spins down after 15 minutes of inactivity (~30–50s cold start). The Starter plan ($7/mo) provides always-on.
+
+> **Future services.** When auth, database, and chat are added, they layer onto this deployment: Render offers managed Postgres as a one-click add-on (`DATABASE_URL` env var), and the existing WebSocket protocol gains a `chat` message type that reuses the room's `broadcast()`. No restructuring of the single-server app is required.
+
 ---
 
 ## 3. Systems Architecture & Technical Design
 
 ### 3.1 Workspace Directory Structure
-Mega Mendikot 5v5 uses a monorepo workspace architecture built with **Turborepo** to maximize code-sharing (especially game rules, interfaces, and network message types) across the frontend client, backend API, and multiplayer server.
+Mega Mindikot 5v5 uses a monorepo workspace architecture built with **Turborepo** to maximize code-sharing (especially game rules, interfaces, and network message types) across the frontend client, backend API, and multiplayer server.
 
 ```
-mega-mendikot-monorepo/
+mega-mindikot-monorepo/
 ├── apps/
 │   ├── web/                 # Next.js App Router (UI Shell, Auth, Shop)
 │   │   └── src/phaser/      # Phaser 3 Game Canvas & Assets
@@ -329,8 +388,8 @@ A Party is a pre-game team of 1 to 5 players.
 
 ### 5.3 Dynamic Link Invitation System
 To simplify friend onboarding, custom URLs are used to bypass manual code typing:
-* **Lobby Invites**: Generates `https://megamendikot.com/join?partyId=<partyId>`.
-* **Private Custom Room Invites**: Generates `https://megamendikot.com/join-room?code=<code>`.
+* **Lobby Invites**: Generates `https://mindikot.com/join?partyId=<partyId>`.
+* **Private Custom Room Invites**: Generates `https://mindikot.com/join-room?code=<code>`.
 * **Auth-redirect Loop**: When a player clicks the invite URL, the Next.js router checks for an active session. If none is found, they are routed to the signup/guest page first. Once logged in, the client completes the auto-join API callback and drops the user straight into the lobby.
 
 ---
@@ -338,21 +397,26 @@ To simplify friend onboarding, custom URLs are used to bypass manual code typing
 ## 6. Scope Matrix & Implementation Roadmap
 
 ### 6.1 Scope Matrix (Phase 1 MVP vs. Deferred)
+> **✅ = shipped in v1.3.1** · **🔶 = pending** · columns indicate target phase.
+
 ```
 +---------------------------------------------------------------------------------+
 |                                 SCOPE MATRIX                                    |
 +--------------------------+--------------------------+---------------------------+
 | MVP (Must Ship)          | Version 1.1 / 1.2        | Future Expansions         |
 +--------------------------+--------------------------+---------------------------+
-| - Authoritative Colyseus | - LiveKit Voice Chat     | - Ranked Ladder Seasons   |
-|   card logic.            | - Capacitor Native       | - Tournament Bracket      |
-| - Basic Next.js web      |   wrappers (iOS/Android) |   system.                 |
-|   client & 2D Phaser.    | - Reconnection logic &   | - Cosmetic Shop & Guilds  |
-| - Text-only Team Chat    |   simple Bot Takeover.   | - Battle Pass system      |
-|   (no voice chat).       | - Interactive Tutorial.  | - Advanced Neural Net AI  |
-| - Simple Lobby Codes.    |                          | - Custom Emotes & Voice   |
-| - PostgreSQL & Prisma db.|                          | - Spectator delayed stream|
-| - Redis Matchmaking.     |                          |                           |
+| ✅ Authoritative card    | 🔶 LiveKit Voice Chat    | - Ranked Ladder Seasons   |
+|    logic (custom server) | 🔶 Capacitor Native      | - Tournament Bracket      |
+| ✅ Web client (vanilla   |    wrappers (iOS/Android)|   system.                 |
+|    HTML/CSS/JS, not Next)| ✅ Reconnection logic &  | - Cosmetic Shop & Guilds  |
+| 🔶 Text-only Team Chat   |    Bot Takeover          | - Battle Pass system      |
+| ✅ Simple Lobby Codes +  | 🔶 Interactive Tutorial  | - Advanced Neural Net AI  |
+|    Private Rooms (§2.11) |                          | - Custom Emotes & Voice   |
+| 🔶 PostgreSQL & Prisma   |                          | - Spectator delayed stream|
+| 🔶 Redis Matchmaking     |                          |                           |
+| ✅ Multi-human rooms +   |                          |                           |
+|    bot fill (§2.11)      |                          |                           |
+| ✅ Deployment (§2.12)    |                          |                           |
 +--------------------------+--------------------------+---------------------------+
 ```
 

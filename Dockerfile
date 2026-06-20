@@ -1,4 +1,4 @@
-# Mega Mendikot 5v5 — container image.
+# Mega Mindikot 5v5 — container image.
 #
 # The game server itself is hand-rolled (custom WebSocket server over node:http,
 # no framework); auth crypto is zero-dependency (scrypt + HS256 via node:crypto).
@@ -6,8 +6,8 @@
 # real `npm ci` (for @prisma/client + pg) and generates the Prisma client.
 #
 # Usage:
-#   docker build -t mega-mendikot .
-#   docker run -p 3000:3000 -e DATABASE_URL=... -e JWT_SECRET=... mega-mendikot
+#   docker build -t mega-mindikot .
+#   docker run -p 3000:3000 -e DATABASE_URL=... -e JWT_SECRET=... mega-mindikot
 
 FROM node:20-alpine
 

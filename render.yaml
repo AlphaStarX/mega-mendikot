@@ -1,11 +1,11 @@
-# Render Blueprint — Mega Mendikot 5v5
+# Render Blueprint — Mega Mindikot 5v5
 # Docs: https://render.com/docs/blueprint-spec
 # To deploy: push this repo to GitHub, then go to render.com → New → Blueprint
 # and connect the repo. Render reads this file and creates the service.
 
 services:
   - type: web
-    name: mega-mendikot
+    name: mega-mindikot
     runtime: node
     plan: free
     buildCommand: "npm ci && npx prisma generate"

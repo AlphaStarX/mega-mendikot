@@ -1,4 +1,4 @@
-# Deploying Mega Mendikot 5v5 on DigitalOcean (Toronto)
+# Deploying Mega Mindikot 5v5 on DigitalOcean (Toronto)
 
 This is the **step-by-step runbook** for hosting the game + team voice (LiveKit) on a
 single DigitalOcean Droplet in Toronto, with automatic TLS via Caddy. Scope:
@@ -10,9 +10,10 @@ for stats/OAuth/etc.).
 >
 > Target host: **DigitalOcean Droplet** — Basic, 2 vCPU / 4 GB / 80 GB SSD,
 > **~$24/mo** (4 TB outbound bandwidth included), region **Toronto (TOR1)**,
-> **Debian 12**. New DigitalOcean accounts get **$200 free credit** (~8 months
-> covered). Everything here runs as root unless noted; switch to a non-root user
-> in Phase 2.
+> **Debian 12**. New accounts can get **$200 free credit** (valid **60 days** —
+> covers ~2 months; sign up via a referral link, not directly) or **longer via the
+> GitHub Student Pack** (~1 year). Everything here runs as root unless noted;
+> switch to a non-root user in Phase 2.
 
 ---
 
@@ -83,9 +84,12 @@ this check.
 
 ## Phase 1 — Provision the DigitalOcean Droplet
 
-1. Sign up at **[digitalocean.com](https://digitalocean.com)** (new accounts get
-   **$200 free credit** — ~8 months covered). Verify your email + add billing info
-   (required even to use credit).
+1. Sign up at **[digitalocean.com](https://digitalocean.com)** — ideally via a **referral
+   link** (search "DigitalOcean $200 referral"), which gets new accounts **$200 free
+   credit valid 60 days** (signing up directly often yields only $100 or nothing). If
+   you're a student, the **[GitHub Student Pack](https://education.github.com/pack)**
+   gives longer-lived credit (~1 year). Either way, you must **add a payment method**
+   (card or PayPal) to verify the account — you won't be charged while under the credit.
 2. Create a Droplet: top-right **Create** → **Droplets**. Choose:
    - **Image:** Debian 12 (x64) — under "Distributions"
    - **Plan:** Basic → **Regular** → **$24/mo** (2 vCPU / 4 GB / 80 GB SSD, 4 TB transfer)
@@ -154,10 +158,10 @@ this check.
 13. As user `mm`, clone the repo:
     ```bash
     cd ~
-    git clone https://github.com/AlphaStarX/mega-mendikot.git
-    cd mega-mendikot/deploy
+    git clone https://github.com/AlphaStarX/mega-mindikot.git
+    cd mega-mindikot/deploy
     ```
-    (Or `scp -r deploy/ mm@<vps-ip>:~/mega-mendikot/` if you prefer not to clone.)
+    (Or `scp -r deploy/ mm@<vps-ip>:~/mega-mindikot/` if you prefer not to clone.)
 
 ## Phase 5 — Configure secrets
 
@@ -202,8 +206,8 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
     apt install -y certbot
     certbot certonly --standalone -d voice.mindikot.com
     # Stop Caddy first if it's already holding port 80 during issuance.
-    cp /etc/letsencrypt/live/voice.mindikot.com/fullchain.pem ~/mega-mendikot/deploy/certs/turn.crt
-    cp /etc/letsencrypt/live/voice.mindikot.com/privkey.pem   ~/mega-mendikot/deploy/certs/turn.key
+    cp /etc/letsencrypt/live/voice.mindikot.com/fullchain.pem ~/mega-mindikot/deploy/certs/turn.crt
+    cp /etc/letsencrypt/live/voice.mindikot.com/privkey.pem   ~/mega-mindikot/deploy/certs/turn.key
     ```
     Then set up renewal (certbot installs a systemd timer by default). On renewal, copy
     the files again — or use `--deploy-hook` to automate the copy + `docker compose restart livekit`.
@@ -253,7 +257,7 @@ docker compose restart app                # restart the game (no rebuild)
 docker compose up -d --build app          # rebuild app after a code change
 
 # Deploy an app update:
-cd ~/mega-mendikot
+cd ~/mega-mindikot
 git pull
 cd deploy && docker compose up -d --build app
 

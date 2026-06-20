@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — database access.
+// Mega Mindikot 5v5 — database access.
 // A lazily-instantiated singleton PrismaClient so the whole server shares one
 // connection pool. Postgres is the one intentional runtime dependency.
 //

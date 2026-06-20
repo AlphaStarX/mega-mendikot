@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — self-contained server.
+// Mega Mindikot 5v5 — self-contained server.
 // One Node process: serves the static web client over HTTP and runs the
 // authoritative WebSocket game rooms. Zero external runtime deps (Node 18+):
 // WebSocket framing is implemented on top of node:http + node:crypto.
@@ -408,7 +408,7 @@ function send(ws, obj) {
 }
 
 server.listen(PORT, HOST, () => {
-  console.log(`\n  ♠♥♦♣  Mega Mendikot 5v5  ♠♥♦♣`);
+  console.log(`\n  ♠♥♦♣  Mega Mindikot 5v5  ♠♥♦♣`);
   console.log(`  → http://localhost:${PORT}`);
   console.log(`  WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`  Multi-room (quick-match fill: ${FILL_TIMER_MS}ms)`);

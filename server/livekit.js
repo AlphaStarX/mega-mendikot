@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — LiveKit voice integration (master spec v1.3.x, §6.1 "LiveKit Voice Chat")
+// Mega Mindikot 5v5 — LiveKit voice integration (master spec v1.3.x, §6.1 "LiveKit Voice Chat")
 //
 // Team-scoped voice chat. Team is derived server-side from the seat (§2.2/§2.10),
 // and a human at seat S is placed into a LiveKit room named `mm_{roomId}_{team}`,

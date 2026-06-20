@@ -1,4 +1,4 @@
-# Mega Mendikot 5v5 — single-box deployment stack (DigitalOcean Toronto Droplet).
+# Mega Mindikot 5v5 — single-box deployment stack (DigitalOcean Toronto Droplet).
 #
 # Three services on one host:
 #   app      — the zero-dependency Node game (HTTP + /ws WebSocket)

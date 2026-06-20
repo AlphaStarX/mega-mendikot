@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — database schema.
+// Mega Mindikot 5v5 — database schema.
 // PostgreSQL is the one intentional runtime dependency (server-side); auth
 // crypto stays zero-dependency (scrypt + HS256 via node:crypto). Phase 1 keeps
 // the User table minimal — stats/XP/avatars/friends are additive migrations in

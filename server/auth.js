@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — account authentication (zero-dependency crypto).
+// Mega Mindikot 5v5 — account authentication (zero-dependency crypto).
 //
 // Deliberately uses only node:crypto, matching the project's hand-rolled ethos
 // (see server/livekit.js, which hand-rolls LiveKit JWTs the same way):

@@ -18,7 +18,7 @@ Dockerfile
 # Docs
 README.md
 RULEBOOK.md
-mega_mendikot_5v5_master_spec_v1_3.md
+mega_mindikot_5v5_master_spec_v1_3.md
 
 # Local env / secrets — never bake these into an image.
 .env

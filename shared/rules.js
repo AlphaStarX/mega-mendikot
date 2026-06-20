@@ -1,4 +1,4 @@
-// Mega Mendikot 5v5 — authoritative rules engine (master spec v1.3.0)
+// Mega Mindikot 5v5 — authoritative rules engine (master spec v1.3.0)
 // Pure, dependency-free, fully unit-testable. Imported by server.
 
 export const SUITS = ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"];

@@ -1,4 +1,4 @@
--- Mega Mendikot 5v5 — initial schema (Phase 1: accounts).
+-- Mega Mindikot 5v5 — initial schema (Phase 1: accounts).
 -- Creates the User table with email/password auth. Later phases add stats,
 -- XP, avatars, friends, etc. via additive migrations.
 

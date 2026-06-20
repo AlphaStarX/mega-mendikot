@@ -1,7 +1,7 @@
-# ♠ Mega Mendikot 5v5 ♥
+# ♠ Mega Mindikot 5v5 ♥
 
-A fully playable, self-contained build of **Mega Mendikot 5v5** — a 5v5 team
-trick-taking card game — implementing the [master spec v1.3.0](./mega_mendikot_5v5_master_spec_v1_3.md).
+A fully playable, self-contained build of **Mega Mindikot 5v5** — a 5v5 team
+trick-taking card game — implementing the [master spec v1.3.0](./mega_mindikot_5v5_master_spec_v1_3.md).
 One Node process serves the web client and runs the authoritative game server.
 
 The game server is **hand-rolled** (custom WebSocket server per RFC 6455 over
@@ -66,7 +66,7 @@ npm test         # 11 tests: rules unit + headless 10-bot full match
 ## Architecture
 
 ```
-MegaMendiCoat/
+MegaMindikot/
 ├── package.json            # no runtime deps; Node 18+
 ├── shared/
 │   ├── rules.js            # pure rules engine (deck, deal, resolve, win)
