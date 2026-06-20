@@ -6,6 +6,12 @@
 > **Target host:** DigitalOcean Droplet, Toronto (TOR1), Debian 12, 2 vCPU / 4 GB
 > **Tests:** 47 passing (rules + auth + livekit + bot)
 
+> ⚠️ **AGENT GROUND RULES — read before doing anything**
+> - **Never `git push` without explicit user permission.** Committing locally is fine,
+>   but pushing to `origin` (any branch) requires the user to say so each time. Ask first.
+> - Applies to `live` and `main` doubly — those are production. Never force-push, never
+>   rewrite shared history, never push to either without a clear go-ahead.
+
 This document tracks what's been built, what's deployed, and what's next. Keep it
 updated as features ship.
 
