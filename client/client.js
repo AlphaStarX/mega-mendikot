@@ -529,6 +529,9 @@ function onMatchEnd(m) {
 function showScreen(id) {
   ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
+  // The in-match "?" help button is only relevant while playing.
+  const help = $("game-help-btn");
+  if (help) help.classList.toggle("hidden", id !== "game-screen");
 }
 
 // ---------- auth UI helpers (Phase 1) ----------
@@ -607,7 +610,7 @@ function renderSeats() {
     el.innerHTML = `
       <div class="avatar">${initials}${voiceGlyph}${timerRing}</div>
       <div class="name">${s.seat === state.you ? "You" : s.name}</div>
-      ${thinking ? '<div class="meta"><span class="thinking">thinking…</span></div>' : ''}`;
+      ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
     table.appendChild(el);
   });
   renderTimerRing();
@@ -746,9 +749,12 @@ function renderHud() {
   if (state.trumpSuit) {
     td.textContent = SUIT_GLYPH[state.trumpSuit];
     td.style.color = SUIT_COLOR[state.trumpSuit] === "red" ? "var(--red)" : "#fff";
+    td.style.opacity = "1";
   } else {
-    td.textContent = "—";
+    // No trump established yet — empty value (no dash placeholder).
+    td.textContent = "";
     td.style.color = "var(--muted)";
+    td.style.opacity = "0";
   }
   const leadInfo = $("lead-info");
   const leadDisp = $("lead-display");
@@ -856,6 +862,11 @@ $("rematch-btn").addEventListener("click", () => {
 });
 // Voice mic toggle (match-only; button is hidden until voice connects).
 $("voice-toggle").addEventListener("click", toggleVoiceMute);
+
+// --- Tutorial / How to Play (window.Tutorial is defined by tutorial.js) ---
+$("howto-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("learn"));
+$("game-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
+$("end-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
 
 // --- Auth screen wiring (Phase 1) ---
 $("login-btn").addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });

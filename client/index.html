@@ -18,6 +18,7 @@
         <div class="menu-buttons">
           <button id="quick-btn" class="primary">Quick Match</button>
           <button id="create-btn">Create Private Room</button>
+          <button id="howto-btn">How to Play</button>
         </div>
         <div class="join-code-row">
           <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
@@ -68,13 +69,17 @@
       <header id="hud">
         <div class="score team-a"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
         <div class="center-info">
-          <div id="trump-info" class="trump-info">Trump: <b id="trump-display">—</b></div>
+          <div id="trump-info" class="trump-info">Trump: <b id="trump-display"></b></div>
           <div id="lead-info" class="info-line hidden">Lead: <b id="lead-display">—</b></div>
           <div id="trick-info">Trick <b id="trick-num">1</b>/18</div>
         </div>
         <div class="score team-b">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
-        <button id="game-leave-btn" class="game-leave-btn" title="Leave the match">Leave ✕</button>
       </header>
+
+      <div class="hud-controls">
+        <button id="game-help-btn" class="hud-btn help hidden" title="How to Play / Rules">?</button>
+        <button id="game-leave-btn" class="hud-btn leave" title="Leave the match">Leave</button>
+      </div>
 
       <div id="table-wrap">
         <div id="table">
@@ -116,7 +121,10 @@
         <h1 id="end-title">Match Over</h1>
         <p id="end-score"></p>
         <div id="end-breakdown"></div>
-        <button id="rematch-btn" class="primary">Play Again</button>
+        <div class="menu-buttons" style="margin-top:14px">
+          <button id="rematch-btn" class="primary">Play Again</button>
+          <button id="end-help-btn">How to Play</button>
+        </div>
       </div>
     </section>
   </div>
@@ -130,6 +138,7 @@
     // The UMD global name has varied across versions (LiveKit / Livekit); accept either.
     window.livekit = window.LiveKit || window.Livekit || null;
   </script>
+  <script src="/tutorial.js"></script>
   <script src="/client.js"></script>
 </body>
 </html>
