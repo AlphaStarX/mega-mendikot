@@ -69,15 +69,20 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   background with vignette; richer felt table with mahogany rail + gold trim ring + faint
   center spade emblem; ornate panels (double border, art-deco corners, glow); gold-gradient
   shimmering title; polished buttons.
-- **In-match control cluster**: Leave + "?" help are a matched glass-pill pair in
-  one fixed flex row (top-right) — same height/radius/shadow, aligned by container
-  (no fragile `right: Npx` offsets). Gold = info, red = destructive.
+- **In-match control cluster**: Leave + "?" help are a matched glass-pill pair,
+  pinned to the top-right corner and aligned vertically with the score panels
+  (44px height, `top` offset matching the screen+HUD padding). Gold = info,
+  red = destructive.
 - **Chat panel**: resized to ~half height, centered on the right edge.
+- **HUD header alignment**: Team A / center chips / Team B all share a `min-height:
+  44px` so the header is one straight horizontal line (tops + bottoms aligned).
 - **HUD center info**: Trump / Lead / Trick laid out horizontally as equal-width
-  glass chips (one consistent set); empty-trump state shows no dash placeholder;
-  winning played card raised to `z-index: 5` so it always renders above overlaps.
+  glass chips (one consistent set), enlarged to 15px/22px for readability; all
+  three now use the `Label: value` format (e.g. `Trick: 1/18`); empty-trump state
+  shows no dash placeholder; winning played card raised to `z-index: 5` so it
+  always renders above overlaps.
 - **"Thinking" indicator**: replaced the italic "thinking…" text with a chat-style
-  three-gold-dot typing bubble (enlarged to 8px for readability).
+  three-gold-dot typing bubble.
 
 ### ✅ Interactive tutorial — "How to Play"
 - **Learn + Rules hub** (`client/tutorial.js`): a self-contained module exposing
@@ -186,6 +191,8 @@ be8e34f Switch deployment docs from OVH to DigitalOcean (Toronto)
 84bbe0d Casino 'Monte Carlo' theme + in-match Leave button + chat resize
 cae2c14 Fix auth transition + duplicate-socket host bug; reset quick-match on leave
 89ff16c Rename brand 'Mega Mendikot' -> 'Mega Mindikot' (domain: mindikot.com)
+1a0f709 Add interactive tutorial + HUD/UI polish (chips, thinking dots, z-index)
+a0c7913 Polish header alignment, chip sizing, Trick: label, control positioning
 ```
 
 ---

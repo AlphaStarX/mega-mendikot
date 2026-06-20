@@ -123,16 +123,19 @@ body::after {
 #auth-mode-toggle { text-align: center; margin-top: 14px; }
 #auth-mode-toggle a { color: var(--gold); text-decoration: underline; cursor: pointer; }
 
-/* In-match top-right control cluster (Leave + help). They're a matched pair:
-   same glass-pill base, aligned in one flex row so they never drift out of line.
+/* In-match control cluster (Leave + help). Pinned to the top-RIGHT corner
+   (position: fixed) to match the original placement, but sized to the same
+   44px height as the score panels so they align vertically.
    Color signals intent — gold = help, red = destructive Leave. */
 .hud-controls {
-  position: fixed; top: 10px; right: 12px; z-index: 60;
+  /* top = #game-screen padding (8px) + #hud padding-top (8px) = 16px, so the
+     buttons' top edge matches the score panels' top edge and they align. */
+  position: fixed; top: 16px; right: 12px; z-index: 60;
   display: flex; align-items: center; gap: 8px;
 }
 .hud-btn {
-  height: 34px; padding: 0 14px; border-radius: 999px;
-  font-size: 13px; font-weight: 700; cursor: pointer; line-height: 1;
+  height: 44px; padding: 0 16px; border-radius: 999px;
+  font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid rgba(245,197,66,.45);
   background: rgba(0,0,0,.45); color: var(--gold);
@@ -141,8 +144,8 @@ body::after {
 }
 .hud-btn:hover { background: rgba(245,197,66,.2); }
 .hud-btn:active { transform: translateY(1px); }
-/* "?" help: square to match its single glyph, keeps both buttons equal-height. */
-.hud-btn.help { width: 34px; padding: 0; font-size: 17px; }
+/* "?" help: square to match its single glyph. Width = height (44px). */
+.hud-btn.help { width: 44px; padding: 0; font-size: 18px; }
 /* Leave: red accent for destructive intent, restyled to match the pill family. */
 .hud-btn.leave { background: rgba(80,12,12,.55); color: #ffd6d6; border-color: var(--red); }
 .hud-btn.leave:hover { background: var(--red); color: #fff; }
@@ -191,7 +194,7 @@ body::after {
   width: 100%; max-width: 1100px; padding: 8px 16px; gap: 12px;
   position: relative; /* anchors the .game-leave-btn */
 }
-.score { font-size: 18px; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; background: rgba(0,0,0,.25); }
+.score { font-size: 18px; display: flex; align-items: center; gap: 8px; padding: 6px 14px; min-height: 44px; border-radius: 20px; background: rgba(0,0,0,.25); flex-shrink: 0; }
 .score.team-a { border-left: 4px solid var(--teamA); }
 .score.team-b { border-right: 4px solid var(--teamB); }
 .score b { font-size: 26px; color: var(--gold); }
@@ -199,23 +202,25 @@ body::after {
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.a { background: var(--teamA); } .dot.b { background: var(--teamB); }
 .center-info {
-  display: flex; flex-direction: row; align-items: center; justify-content: center;
-  gap: 10px; text-align: center; color: var(--muted);
+  display: flex; flex-direction: row; align-items: stretch; justify-content: center;
+  gap: 10px; text-align: center; color: var(--muted); min-height: 44px;
 }
 /* Each stat is a small glass chip. All three share an EQUAL width (flex: 1 1 0
-   + min-width) so they stay identical regardless of their content/length. */
+   + min-width) so they stay identical regardless of their content/length.
+   align-items:center keeps the text vertically centered within the chip. */
 .center-info > div {
-  flex: 1 1 0; min-width: 110px;
+  flex: 1 1 0; min-width: 120px;
+  display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.25);
   border: 1px solid rgba(245,197,66,.25);
   border-radius: 999px;
-  padding: 5px 14px;
-  font-size: 13px;
+  padding: 7px 16px;
+  font-size: 15px;
   line-height: 1.1;
   white-space: nowrap;
 }
-.trump-info b { color: var(--gold); font-size: 18px; }
-.info-line b { font-size: 16px; }
+.trump-info b { color: var(--gold); font-size: 22px; }
+.info-line b { font-size: 20px; }
 
 #table-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
 #table {
@@ -287,9 +292,9 @@ body::after {
 .seat .meta { font-size: 11px; color: var(--muted); }
 /* "thinking" indicator — three gold dots that ripple in sequence (chat-style
    typing bubble). Replaces the old italic "thinking…" text. */
-.thinking-dots { display: inline-flex; gap: 6px; align-items: center; justify-content: center; padding: 4px 0; }
+.thinking-dots { display: inline-flex; gap: 4px; align-items: center; justify-content: center; padding: 2px 0; }
 .thinking-dots span {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--gold);
+  width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
   opacity: .35;
   animation: dotPulse 1.2s ease-in-out infinite;
 }
@@ -473,10 +478,13 @@ body::after {
   .seat { width: 72px; }
   .seat .avatar { width: 36px; height: 36px; font-size: 14px; }
   #table { height: 50vh; }
-  #hud { font-size: 14px; }
+  #hud { font-size: 14px; flex-wrap: wrap; row-gap: 6px; }
   /* HUD center chips: let them wrap and shrink so the row doesn't overflow. */
   .center-info { flex-wrap: wrap; gap: 6px; }
   .center-info > div { min-width: 0; padding: 4px 10px; font-size: 12px; }
+  /* Buttons stay accessible but shrink on narrow screens. */
+  .hud-btn { height: 36px; padding: 0 12px; font-size: 13px; }
+  .hud-btn.help { width: 36px; font-size: 15px; }
   /* Chat: full-width slide-up drawer on mobile */
   #chat-panel { left: 8px; right: 8px; width: auto; top: auto; bottom: 108px; height: 30vh; max-height: 280px; }
   .chat-toggle { display: flex; }
