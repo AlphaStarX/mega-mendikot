@@ -192,7 +192,7 @@ be8e34f Switch deployment docs from OVH to DigitalOcean (Toronto)
 cae2c14 Fix auth transition + duplicate-socket host bug; reset quick-match on leave
 89ff16c Rename brand 'Mega Mendikot' -> 'Mega Mindikot' (domain: mindikot.com)
 1a0f709 Add interactive tutorial + HUD/UI polish (chips, thinking dots, z-index)
-a0c7913 Polish header alignment, chip sizing, Trick: label, control positioning
+f900cd6 Polish header alignment, chip sizing, Trick: label, control positioning
 ```
 
 ---
