@@ -1,10 +1,10 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-20
+> **Last updated:** 2026-06-21
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun; `play.mindikot.com` + `voice.mindikot.com`)
 > **Target host:** DigitalOcean Droplet, Toronto (TOR1), Debian 12, 2 vCPU / 4 GB
-> **Tests:** 49 passing (rules + auth + livekit + bot)
+> **Tests:** 89 passing (rules + auth + livekit + bot + debug)
 
 > ⚠️ **AGENT GROUND RULES — read before doing anything**
 > - **Never `git push` without explicit user permission.** Committing locally is fine,
@@ -117,6 +117,52 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   level, colliding with `client.js`'s global `const $` and aborting all of `client.js`
   with a `SyntaxError`. Only `window.Tutorial` now escapes the IIFE.
 
+### ✅ Debug panel (dev/QA tooling)
+- **Purpose**: a client-side trace panel that captures every WebSocket message (in/out),
+  every UI click, every screen transition, and game-state diffs — so bugs like the
+  stale-state ceremony/game overlap can be diagnosed from a copy-pasted trace instead
+  of guesswork.
+- **Files**: `client/debug.js` (~200 lines, self-contained IIFE) + pure helpers in
+  `client/debug-helpers.js` + ~40 lines of CSS + a guarded 2-line hook in `client.js`
+  (`if (window.__dbg) ...` at the `handle`/`send` chokepoints). No new deps.
+- **Tested** (35 new tests, zero new deps):
+  - `test/debug-gate.test.js` — the full gate truth table (opt-in, loopback, key match,
+    IPv4-mapped IPv6, the loopback-wins short-circuit).
+  - `test/debug-http.test.js` — spawns the real server and asserts the script injection
+    end-to-end (`?debug=1` injects, no-param does not, only `index.html` gets it, path
+    traversal rejected). Also asserts **load order**: `debug.js` before `client.js`
+    (regression guard for bug #2 below) and `debug-helpers.js` before `debug.js`.
+  - `test/debug-helpers.test.js` — the pure `summarize` / `buildSnapshot` / `diffState`
+    logic in Node (no DOM lib).
+  - `docs/debug-qa-checklist.md` — manual checklist for the interactive panel features
+    (filters, search, pause, copy, clear, collapse) that cannot be auto-tested without
+    a DOM library.
+- **Refactor for testability** (behaviour unchanged): `debugAllowed` + `DEBUG_KEY`
+  extracted into `server/debug-gate.js` (importable, same pattern as `auth.js` /
+  `livekit.js`); `summarize` / state-diff extracted into `client/debug-helpers.js`.
+- **Bugs fixed during testing** (the panel was silently non-functional before):
+  1. **Wrong injection path**: was emitting `<script src="/client/debug.js">`, but client
+     files are served **flat** (`CLIENT_DIR = client/`, so the correct URL is `/debug.js`).
+     The nested path 404'd — the panel's JS never loaded even when the gate passed.
+  2. **Wrong load order**: `debug.js` was injected after `client.js`, so `client.js`'s
+     `if (window.__dbg) hook(...)` ran while `window.__dbg` was still undefined → the panel
+     never armed. Now the debug scripts inject **before** `<script src="/client.js">`
+     (classic scripts run in document order). Caught by manual testing.
+- **Activation — secret-key gate** (zero risk to players):
+  - **Local dev**: `http://localhost:3000/?debug=1` — works from loopback, no key needed.
+  - **Live**: set env var `DEBUG_KEY=<long-random-secret>` on the droplet, then
+    `https://mindikot.com/?debug=1&key=<secret>`.
+  - **Normal players never receive the debug code**: the server only injects the debug
+    `<script>` tags into the HTML when the gate passes (`debugAllowed(req)`, now in
+    `server/debug-gate.js`). A plain `/` request, or `?debug=1` with a wrong/missing key
+    from a non-loopback address, gets zero debug code. Verified via curl + automated tests.
+- **Panel features**: timestamped color-coded log (messages/clicks/state/screens),
+  type filters, substring search, pause/resume, **📋 Copy log** (clipboard export to
+  paste back to the developer), clear, collapse.
+- **State diffs**: snapshots ~12 key state fields per message; emits a compact
+  `STATE changed: hand(0→18), leadSelectActive(true→false)` line — this is what makes
+  cross-match stale-state races obvious.
+
 ### ✅ Deployment infrastructure
 - **`Dockerfile`**: containerizes the app; runs `npm ci` + `prisma generate` + `migrate deploy`.
 - **`deploy/docker-compose.yml`**: 4 services — `app` + `db` (postgres:16) + `livekit` SFU +
@@ -179,6 +225,7 @@ git checkout live && git merge --ff-only staging && git push origin live
 | `DATABASE_URL` | Postgres connection | accounts (fail-soft if unset) |
 | `JWT_SECRET` | HS256 session signing | accounts (fail-soft if unset) |
 | `LIVEKIT_API_KEY` / `_SECRET` / `_URL` | SFU token minting | voice (fail-soft if unset) |
+| `DEBUG_KEY` | secret gate for the client debug panel | optional; live debug needs `?debug=1&key=` |
 
 Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 

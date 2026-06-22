@@ -18,6 +18,7 @@ import {
   hashPassword, verifyPassword, signToken, verifyToken,
 } from "./auth.js";
 import { getDb, closeDb } from "./db.js";
+import { debugAllowed } from "./debug-gate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -36,13 +37,28 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
 };
 
+// Debug-panel gate lives in ./debug-gate.js (imported above) so it can be
+// unit-tested. See test/debug-gate.test.js for the full truth table.
+
 const server = http.createServer(async (req, res) => {
   try {
     let url = decodeURIComponent((req.url || "/").split("?")[0]);
     if (url === "/" || url === "/index") url = "/index.html";
     if (url.includes("..")) { res.writeHead(403); return res.end("Forbidden"); }
     const filePath = join(CLIENT_DIR, url);
-    const data = await readFile(filePath);
+    let data = await readFile(filePath);
+    // Inject the debug scripts into index.html ONLY when the gate passes.
+    // Normal players (no ?debug=1, or wrong key) get the plain page — no debug code.
+    // NOTE: client files are served FLAT (CLIENT_DIR = client/, so the URL is
+    // /debug.js, NOT /client/debug.js). debug-helpers.js loads before debug.js.
+    // CRITICAL ORDER: these must load BEFORE client.js. client.js checks
+    // `window.__dbg` at the bottom of the file and calls hook() — if debug.js
+    // hasn't run yet, window.__dbg is undefined and the panel never arms. So we
+    // inject ahead of <script src="/client.js"> rather than before </body>.
+    if (url === "/index.html" && debugAllowed(req)) {
+      const injection = '  <script src="/debug-helpers.js"></script>\n  <script src="/debug.js"></script>\n';
+      data = Buffer.from(data.toString().replace('<script src="/client.js">', injection + '<script src="/client.js">'));
+    }
     res.writeHead(200, { "Content-Type": MIME[extname(filePath)] || "application/octet-stream" });
     res.end(data);
   } catch {
@@ -394,6 +410,10 @@ function handleJoin(ws, msg) {
   if (room.matchState === "LOBBY") {
     room.broadcastLobby();
     if (!room.privateRoom) scheduleFillStart(room);
+  } else if (room.matchState === "LEAD_SELECT") {
+    // Late joiner during the lead-selection ceremony: drop them INTO the ceremony
+    // (face-up cards + banner), NOT the game. They must not see a "playing" view.
+    room.sendLeadSelectEnter(ws.seat);
   } else if (room.matchState === "PLAYING") {
     // Mid-match join (reconnection) — sendInitTo already handled in onHumanReconnect.
     // If it's a brand-new seat taken over from a bot mid-match, re-sync:
