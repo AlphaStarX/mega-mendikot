@@ -206,6 +206,27 @@ body::after {
 .of { color: var(--muted); font-size: 13px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.a { background: var(--teamA); } .dot.b { background: var(--teamB); }
+
+/* Captured-10s chip tracker — a compact 4-row grid (one per suit) of 6 chips
+   each (6 copies of the 10 per suit in the mega deck = 24 total). Each chip is
+   colored by the team that captured that copy; empty = uncaptured. Sits in a
+   centered strip just under the HUD score bar. */
+.tens-tracker {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: 2px auto 0; padding: 6px 12px; width: fit-content;
+  max-width: 460px; background: rgba(0,0,0,.28); border-radius: 12px;
+  border: 1px solid rgba(245,197,66,.18);
+}
+.tens-row { display: flex; align-items: center; gap: 6px; }
+.tens-suit-label { font-size: 15px; font-weight: 700; width: 16px; text-align: center; }
+.tens-chips { display: flex; gap: 3px; }
+.tens-chip {
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.05);
+}
+.tens-chip.a { background: var(--teamA); border-color: rgba(255,255,255,.4); }
+.tens-chip.b { background: var(--teamB); border-color: rgba(255,255,255,.4); }
+.tens-chip.empty { background: transparent; border-style: dashed; border-color: rgba(255,255,255,.12); }
 .center-info {
   display: flex; flex-direction: row; align-items: stretch; justify-content: center;
   gap: 10px; text-align: center; color: var(--muted); min-height: 54px;
@@ -535,18 +556,13 @@ body::after {
   display: none; align-items: center; justify-content: center;
 }
 
-/* Team voice mic toggle (§6.1). Hidden until voice actually connects. */
-.voice-toggle {
-  position: fixed; right: 56px; bottom: 108px; z-index: 51;
-  background: rgba(20,58,38,.92); border: 1px solid var(--gold); color: var(--gold);
-  padding: 9px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer;
-  display: none; align-items: center; gap: 4px;
+/* Voice mic toggle — sits in the top-right .hud-controls cluster as a square
+   icon button (matching .hud-btn.help). Hidden until voice actually connects;
+   JS removes the `hidden` class via updateVoiceButton(). */
+.hud-btn.voice {
+  width: 54px; padding: 0; font-size: 18px;
 }
-.voice-toggle:hover { background: rgba(30,78,58,.95); }
-.voice-toggle[aria-pressed="true"] { opacity: .7; border-style: dashed; }
-@media (max-width: 600px) {
-  .voice-toggle { display: inline-flex; right: 56px; bottom: 108px; }
-}
+.hud-btn.voice[aria-pressed="true"] { opacity: .7; border-style: dashed; }
 
 /* Per-seat teammate voice indicator, rendered inside the avatar. */
 .seat .voice-ind {

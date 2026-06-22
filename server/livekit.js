@@ -1,8 +1,9 @@
 // Mega Mindikot 5v5 — LiveKit voice integration (master spec v1.3.x, §6.1 "LiveKit Voice Chat")
 //
-// Team-scoped voice chat. Team is derived server-side from the seat (§2.2/§2.10),
-// and a human at seat S is placed into a LiveKit room named `mm_{roomId}_{team}`,
-// so opponents live in a different room and can never subscribe to your audio.
+// All-player voice chat. Everyone in a match is placed into a single LiveKit
+// room named `mm_{roomId}` so all 10 players (both teams) can hear each other
+// — a casual "table talk" style. (Previously team-scoped; reopened to everyone
+// by design.)
 //
 // This module is deliberately zero-dependency: LiveKit access tokens are signed
 // JWTs (HS256) and are minted here with node:crypto only, matching the project's
@@ -77,10 +78,10 @@ export function voiceConfig() {
 }
 
 /**
- * Build the team-scoped LiveKit room name for a given game room + team.
- * Opposing teams get different names -> structural audio isolation.
- * Room ids are 4 unambiguous chars (A-Z2-9, no IO01), so they're LiveKit-room-safe.
+ * Build the voice room name for a given game room. All players in the match
+ * (both teams) share one room so everyone can hear everyone. Room ids are 4
+ * unambiguous chars (A-Z2-9, no IO01), so they're LiveKit-room-safe.
  */
-export function voiceRoomName(roomId, team) {
-  return `mm_${roomId}_${team}`;
+export function voiceRoomName(roomId) {
+  return `mm_${roomId}`;
 }

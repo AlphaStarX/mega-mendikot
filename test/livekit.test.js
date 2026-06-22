@@ -1,5 +1,5 @@
 // Tests for the zero-dependency LiveKit token minter (master spec v1.3.x).
-// Verifies JWT structure, team-scoped room claim, signature validity, and the
+// Verifies JWT structure, all-player room claim, signature validity, and the
 // voiceConfigured() gate. Run with `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -29,7 +29,7 @@ test("makeLiveKitToken produces an HS256 JWT with correct claims", () => {
   const token = makeLiveKitToken({
     apiKey: API_KEY,
     apiSecret: API_SECRET,
-    room: "mm_ABCD_A",
+    room: "mm_ABCD",
     identity: "seat0-session-abc",
     name: "Alice",
   });
@@ -43,28 +43,28 @@ test("makeLiveKitToken produces an HS256 JWT with correct claims", () => {
   assert.equal(payload.v, 2);
   assert.ok(payload.nbf, "has nbf");
   assert.ok(payload.exp > payload.nbf, "exp is after nbf");
-  // Team-scoped room claim — opponents land in a different room.
+  // All-player room claim — everyone in the match shares one room.
   assert.equal(payload.video.roomJoin, true);
-  assert.equal(payload.video.room, "mm_ABCD_A");
+  assert.equal(payload.video.room, "mm_ABCD");
   assert.equal(payload.video.canPublish, true);
   assert.equal(payload.video.canSubscribe, true);
   // Signature must verify against the secret.
   assert.equal(signature, expectedSig);
 });
 
-test("two teams get different room claims -> structural audio isolation", () => {
-  const a = makeLiveKitToken({ apiKey: API_KEY, apiSecret: API_SECRET, room: "mm_ABCD_A", identity: "x" });
-  const b = makeLiveKitToken({ apiKey: API_KEY, apiSecret: API_SECRET, room: "mm_ABCD_B", identity: "y" });
+test("all players share one room claim -> everyone can hear everyone", () => {
+  const a = makeLiveKitToken({ apiKey: API_KEY, apiSecret: API_SECRET, room: "mm_ABCD", identity: "x" });
+  const b = makeLiveKitToken({ apiKey: API_KEY, apiSecret: API_SECRET, room: "mm_ABCD", identity: "y" });
   const pa = JSON.parse(Buffer.from(a.split(".")[1], "base64url").toString());
   const pb = JSON.parse(Buffer.from(b.split(".")[1], "base64url").toString());
-  assert.notEqual(pa.video.room, pb.video.room, "teams must not share a LiveKit room");
+  assert.equal(pa.video.room, pb.video.room, "all players must share one LiveKit room");
 });
 
 test("signature fails verification if the secret differs (anti-forge)", () => {
   const token = makeLiveKitToken({
     apiKey: API_KEY,
     apiSecret: API_SECRET,
-    room: "mm_X_A",
+    room: "mm_X",
     identity: "z",
   });
   const [, , sig] = token.split(".");
@@ -72,10 +72,10 @@ test("signature fails verification if the secret differs (anti-forge)", () => {
   assert.notEqual(sig, wrongSig);
 });
 
-test("voiceRoomName maps (room, team) deterministically", () => {
-  assert.equal(voiceRoomName("ABCD", "A"), "mm_ABCD_A");
-  assert.equal(voiceRoomName("ABCD", "B"), "mm_ABCD_B");
-  assert.notEqual(voiceRoomName("ABCD", "A"), voiceRoomName("ABCD", "B"));
+test("voiceRoomName maps room deterministically (single room for all players)", () => {
+  assert.equal(voiceRoomName("ABCD"), "mm_ABCD");
+  // All players in a match — regardless of team — land in the same room.
+  assert.equal(voiceRoomName("ABCD"), voiceRoomName("ABCD"));
 });
 
 test("voiceConfigured is false when env vars are unset", () => {

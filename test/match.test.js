@@ -132,7 +132,7 @@ test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async
   restore();
 });
 
-test("with voice configured, connected humans get team-scoped tokens on start and voiceEnd on end", async () => {
+test("with voice configured, connected humans get all-player tokens on start and voiceEnd on end", async () => {
   const restore = fastTimers();
   const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
   process.env.LIVEKIT_API_KEY = "key-test";
@@ -143,7 +143,6 @@ test("with voice configured, connected humans get team-scoped tokens on start an
   const ws = capturingWs("u1");
   const seat = room.addHuman(ws, "u1", "Ann");
   assert.notEqual(seat, -1);
-  const team = room.seats[seat].team;
 
   // Bots never receive tokens; only the human does.
   room.start();
@@ -153,7 +152,7 @@ test("with voice configured, connected humans get team-scoped tokens on start an
   const init = ws._sent.find((m) => m.t === "init");
   assert.ok(init, "human received init");
   assert.equal(init.voiceUrl, "wss://lk.test");
-  assert.equal(init.voiceRoom, `mm_V2_${team}`, "token is for this human's team room");
+  assert.equal(init.voiceRoom, "mm_V2", "token is for this match's all-player room");
   assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part jwt");
 
   await realSleep(8000);
@@ -164,7 +163,7 @@ test("with voice configured, connected humans get team-scoped tokens on start an
   restore();
 });
 
-test("opposing-team humans are placed in different voice rooms", async () => {
+test("opposing-team humans share the same voice room (all-player voice)", async () => {
   const restore = fastTimers();
   const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
   process.env.LIVEKIT_API_KEY = "key-test";
@@ -180,7 +179,7 @@ test("opposing-team humans are placed in different voice rooms", async () => {
   await realSleep(200);
   const initA = wsA._sent.find((m) => m.t === "init");
   const initB = wsB._sent.find((m) => m.t === "init");
-  assert.notEqual(initA.voiceRoom, initB.voiceRoom, "opponents get different voice rooms");
+  assert.equal(initA.voiceRoom, initB.voiceRoom, "all players share one voice room");
   assert.notEqual(room.seats[sA].team, room.seats[sB].team, "sanity: they are on different teams");
 
   for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }

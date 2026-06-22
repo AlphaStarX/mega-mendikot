@@ -56,6 +56,7 @@ const state = {
   trumpSuit: "",
   activeSeat: -1,
   score: { A: 0, B: 0 },
+  capturedTens: { A: [], B: [] }, // per-team per-suit captured 10s for the chip tracker
   tricksWon: { A: 0, B: 0 },
   turnTime: 20,
   turnWarningSeat: null,  // seat under 5s warning (ring flashes red)
@@ -76,7 +77,7 @@ const state = {
   voiceRoom: null,     // livekit.Room instance once connected
   voiceConnected: false,
   voiceMuted: false,
-  voiceMutedSeats: {}, // seat -> bool (teammate mute indicators)
+  voiceMutedSeats: {}, // seat -> bool (per-player mute indicators)
   // --- account auth (Phase 1) ---
   userId: null,
   userName: null,      // display name from the account (if logged in)
@@ -388,6 +389,7 @@ function onInit(m) {
   state.trumpSuit = m.trumpSuit;
   state.activeSeat = m.activeSeat;
   state.score = m.score;
+  if (m.capturedTens) state.capturedTens = m.capturedTens;
   if (m.tricksWon) state.tricksWon = m.tricksWon;
   state.turnTime = m.turnTime;
   state.playedCards = m.playedCards || [];
@@ -446,6 +448,7 @@ function onPlayed(m) {
 
 function onTrickWon(m) {
   state.score = m.score;
+  if (m.capturedTens) state.capturedTens = m.capturedTens;
   if (m.tricksWon) state.tricksWon = m.tricksWon;
   state.winnerSeat = m.winnerSeat;
   state.thinkingSeat = null;
@@ -527,7 +530,7 @@ async function connectVoice(voice) {
       state.voiceMuted = true;
     }
     updateVoiceButton();
-    showMsg(`🎙️ Voice connected — talk to Team ${state.myTeam}`);
+    showMsg(`🎙️ Voice connected`);
   } catch (err) {
     // SFU unreachable, bad token, network failure, etc. Fail soft.
     state.voiceRoom = null;
@@ -576,7 +579,7 @@ function updateVoiceButton() {
     return;
   }
   btn.classList.remove("hidden");
-  btn.textContent = state.voiceMuted ? "🔇 Muted" : "🎙️ Mic On";
+  btn.textContent = state.voiceMuted ? "🔇" : "🎙️";
   btn.setAttribute("aria-pressed", String(state.voiceMuted));
 }
 
@@ -714,12 +717,12 @@ function renderSeats() {
     el.style.top = y + "%";
     const initials = (s.name || "?").slice(0, 2).toUpperCase();
     const thinking = s.seat === state.thinkingSeat;
-    // Voice indicator: only for teammates (opponent voice state is unknown and
-    // irrelevant — they're in a different LiveKit room). "You" reflects your own
-    // mic state; other teammates reflect the voiceState broadcasts we received.
+    // Voice indicator: for every connected human (voice is all-player, so
+    // everyone shares one room and everyone's mute state is broadcast).
+    // "You" reflects your own mic state; others reflect the voiceState broadcasts.
     let voiceGlyph = "";
-    const isTeammate = s.team === state.myTeam && !s.isBot;
-    if (isTeammate && state.voiceConnected) {
+    const isPlayer = !s.isBot;
+    if (isPlayer && state.voiceConnected) {
       const muted = s.seat === state.you ? state.voiceMuted : !!state.voiceMutedSeats[s.seat];
       voiceGlyph = muted
         ? '<span class="voice-ind muted" title="Muted">🔇</span>'
@@ -949,7 +952,45 @@ function renderHud() {
   } else if (leadInfo) {
     leadInfo.classList.add("hidden");
   }
+  renderTensTracker();
   renderSeats();
+}
+
+// ---------- captured-10s chip tracker ----------
+// Renders 4 rows (one per suit) × 6 chips (6 copies of the 10 per suit in the
+// 192-card mega deck). Each chip is colored by the team that captured that copy,
+// or left neutral if uncaptured. The server is the source of truth
+// (state.capturedTens = { A: [{suit}], B: [{suit}] }), so reconnect mid-match
+// shows the correct history. 24 total chips = 24 Tens in the deck.
+const SUITS_ORDER = ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"];
+const COPIES_PER_SUIT = 6;
+
+function renderTensTracker() {
+  const wrap = $("tens-tracker");
+  if (!wrap) return;
+  // Build a per-suit → list-of-teams map from capturedTens. Order within a suit
+  // doesn't matter for display (chips are identical within a team+suit), so we
+  // just count how many of each suit each team took.
+  const counts = {};
+  for (const suit of SUITS_ORDER) counts[suit] = { A: 0, B: 0 };
+  for (const team of ["A", "B"]) {
+    for (const c of (state.capturedTens[team] || [])) {
+      if (counts[c.suit]) counts[c.suit][team]++;
+    }
+  }
+  let html = "";
+  for (const suit of SUITS_ORDER) {
+    const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
+    // Build 6 chips: fill A's first, then B's, rest empty. (The split between
+    // A and B for the same suit is shown as a run of A chips then a run of B
+    // chips — clear at a glance which team owns which copies.)
+    let chips = "";
+    for (let i = 0; i < counts[suit].A; i++) chips += '<span class="tens-chip a" title="Team A"></span>';
+    for (let i = 0; i < counts[suit].B; i++) chips += '<span class="tens-chip b" title="Team B"></span>';
+    for (let i = counts[suit].A + counts[suit].B; i < COPIES_PER_SUIT; i++) chips += '<span class="tens-chip empty"></span>';
+    html += `<div class="tens-row"><span class="tens-suit-label" style="color:${color}">${SUIT_GLYPH[suit]}</span><span class="tens-chips">${chips}</span></div>`;
+  }
+  wrap.innerHTML = html;
 }
 
 function updateMyTurn() {

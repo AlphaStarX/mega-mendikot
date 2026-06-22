@@ -71,6 +71,9 @@ export class GameRoom {
     this.tricksWon = { A: 0, B: 0 }; // tricks captured per team (deadlock tiebreak)
 
     this.score = { A: 0, B: 0 };
+    // Per-team per-suit captured-Tens history, for the on-screen chip tracker.
+    // Each entry is { suit }. Used by sendInitTo (reconnect) + trickWon (live).
+    this.capturedTens = { A: [], B: [] };
     this.turnTime = TURN_SECONDS;
     this.tickHandle = null;
     this.botHandle = null;
@@ -358,12 +361,19 @@ export class GameRoom {
     // Tens captured from played cards
     let tens = countTens(this.playedCards.map((p) => p.card));
     this.seats[winSeat].tens += tens;
+    // Per-suit capture log for the on-screen chip tracker.
+    for (const p of this.playedCards) {
+      if (isTen(p.card)) this.capturedTens[winTeam].push({ suit: p.card.suit });
+    }
 
     // Kitty reveal over first 12 tricks (spec §2.3)
     let kittyCard = null, kittyTen = 0;
     if (this.trickNumber <= KITTY_TRICKS && this.kittyIdx < this.kitty.length) {
       kittyCard = this.kitty[this.kittyIdx++];
-      if (isTen(kittyCard)) kittyTen = 1;
+      if (isTen(kittyCard)) {
+        kittyTen = 1;
+        this.capturedTens[winTeam].push({ suit: kittyCard.suit });
+      }
       tens += kittyTen;
       this.score[winTeam] += kittyTen;
       this.log.push(`Kitty reveal trick ${this.trickNumber}: ${this.cardView(kittyCard).label} -> team ${winTeam}.`);
@@ -378,6 +388,7 @@ export class GameRoom {
       kittyCard: kittyCard ? this.cardView(kittyCard) : null,
       cards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card) })),
       score: this.score,
+      capturedTens: this.capturedTens,
       tricksWon: { ...this.tricksWon },
       trickNumber: this.trickNumber,
     });
@@ -517,22 +528,21 @@ export class GameRoom {
     return { id: card.id, suit: card.suit, rank: card.rank, label: cardLabel(card) };
   }
 
-  // Mint a team-scoped LiveKit access token for a connected human seat.
-  // Team is read from the seat (§2.2/§2.10), never from a client claim, so an
-  // opponent can never obtain a token for another team's room. Returns null when
-  // voice isn't configured or the seat isn't a connected human — callers must
-  // treat null as "no voice for this seat" (graceful no-op).
+  // Mint a LiveKit access token for a connected human seat. All players in the
+  // match (both teams) share one room (`mm_{roomId}`), so everyone can hear
+  // each other. Returns null when voice isn't configured or the seat isn't a
+  // connected human — callers must treat null as "no voice for this seat"
+  // (graceful no-op).
   voiceTokenForSeat(seatIdx) {
     const seat = this.seats[seatIdx];
     if (!seat || !seat.isHuman || !seat.isConnected) return null;
     if (!voiceConfigured()) return null;
     const cfg = voiceConfig();
-    const room = voiceRoomName(this.roomId, seat.team);
+    const room = voiceRoomName(this.roomId);
     const identity = `seat${seatIdx}-${seat.sessionId || "anon"}`;
     return {
       voiceUrl: cfg.url,
       voiceRoom: room,
-      voiceTeam: seat.team,
       voiceToken: makeLiveKitToken({
         apiKey: cfg.apiKey,
         apiSecret: cfg.apiSecret,
@@ -565,6 +575,7 @@ export class GameRoom {
       activeSeat: this.activeSeat,
       leadSeat: this.leadSeat,
       score: this.score,
+      capturedTens: this.capturedTens,
       tricksWon: { ...this.tricksWon },
       turnTime: this.turnTime,
       playedCards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card), playOrder: p.playOrder })),

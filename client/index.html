@@ -82,8 +82,13 @@
         </div>
       </header>
 
+      <!-- Captured-10s tracker: 24 chips (4 suits × 6 copies), colored by team.
+           Persistent on-screen so players can plan which 10s are still live. -->
+      <div id="tens-tracker" class="tens-tracker"></div>
+
       <div class="hud-controls">
         <button id="game-help-btn" class="hud-btn help hidden" title="How to Play / Rules">?</button>
+        <button id="voice-toggle" class="hud-btn voice hidden" aria-pressed="false" title="Mute / unmute your mic">🎙️</button>
         <button id="game-leave-btn" class="hud-btn leave" title="Leave the match">Leave</button>
       </div>
 
@@ -111,7 +116,6 @@
       </footer>
 
       <button id="chat-toggle" class="chat-toggle hidden">💬</button>
-      <button id="voice-toggle" class="voice-toggle hidden" aria-pressed="false" title="Mute / unmute your mic">🎙️ Mic On</button>
       <aside id="chat-panel" class="hidden">
         <div class="chat-header">Team Chat <span class="chat-team-label"></span></div>
         <div id="chat-log"></div>
