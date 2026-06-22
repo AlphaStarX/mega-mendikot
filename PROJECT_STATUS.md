@@ -47,6 +47,11 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   seat from a separate selection deck; tied seats redraw in shootout rounds until one player holds
   the unique highest card. The winner is highlighted, then play begins. Server-driven staged
   timers; client renders face-up cards + a narrating banner.
+- **Deadlock UI + stale-state fix**: the HUD shows per-team tricks-won, and the end screen explains
+  12-12 deadlock outcomes (decided by most tricks; a draw is possible at 9-9 tricks). A new
+  `resetMatchState()` clears all per-match client state on every teardown so a fresh match never
+  inherits stale table/hand/ceremony data — the cross-match race the debug panel was built to
+  diagnose is now prevented at the source.
 - **Multi-room matchmaking**: quick-match auto-fill (bots after 20s), private rooms with
   shareable 4-char codes, `?room=XXXX` deep-links, host concept.
 - **Web client** (`client/`): vanilla HTML/CSS/JS, 10-seat perspective-rotated table,
@@ -250,7 +255,13 @@ be8e34f Switch deployment docs from OVH to DigitalOcean (Toronto)
 cae2c14 Fix auth transition + duplicate-socket host bug; reset quick-match on leave
 89ff16c Rename brand 'Mega Mendikot' -> 'Mega Mindikot' (domain: mindikot.com)
 1a0f709 Add interactive tutorial + HUD/UI polish (chips, thinking dots, z-index)
-f900cd6 Polish header alignment, chip sizing, Trick: label, control positioning
+f900cd6 Polish HUD header alignment, chip sizing, Trick: label, control positioning
+231c5c7 Add bot AI unit tests (13 cases) covering each heuristic
+87b6931 docs: record correct commit hash in history
+d6544b5 docs: add agent ground rule — no git push without user permission
+a430fcd Change 12-12 deadlock rule: most tricks won (was: last trick)
+3b3e9d4 Test the debug/logging panel and fix two load-time bugs
+ddd6f6c Add visible lead-selection ceremony + deadlock UI + stale-state fix
 ```
 
 ---
