@@ -112,8 +112,8 @@ const LESSONS = [
     teach:
       `<p class="tut-callout">🏁 First team to <b>13 Tens</b> wins instantly — even mid-match.</p>` +
       `<p>A Ten revealed from the <b>kitty</b> (12 hidden cards, one shown per trick for the first 12 tricks) also counts and can trigger the instant win.</p>` +
-      `<p>If all 18 tricks are played and it's <b>12–12</b>, the only tie possible: the team that won the <b>last (18th) trick</b> wins.</p>` +
-      `<p class="tut-sub">There are no draws — every match has a clear winner.</p>`,
+      `<p>If all 18 tricks are played and it's <b>12–12</b>, the only Ten-count tie possible: the team that won the <b>most tricks</b> wins.</p>` +
+      `<p class="tut-sub">A draw is possible but very rare — only if tricks are tied (9–9) too.</p>`,
     setup: setupWinningDemo,
   },
 ];
@@ -400,8 +400,7 @@ const RULES = [
        <p class="tut-callout">The first team to capture <b>13 of the 24 Tens</b> wins the match <b>immediately</b>.</p>
        <p>This is checked at the end of every trick. A captured <b>kitty Ten</b> also counts and can trigger the instant win.</p>
        <h4>The 12–12 deadlock</h4>
-       <p>If all 18 tricks are played and the score is tied <b>12–12</b> (the only possible Ten-count tie), the team that won the <b>most tricks</b> wins. If tricks are tied too (9–9), it's a <b>draw</b>.</p>
-       <p>There are <b>no draws</b> — every match has one clear winner.</p>`,
+       <p>If all 18 tricks are played and the score is tied <b>12–12</b> (the only possible Ten-count tie), the team that won the <b>most tricks</b> wins. If tricks are tied too (9–9), it's a <b>draw</b>.</p>`,
   },
   {
     id: "turn", title: "Turn Structure", icon: "⏱",

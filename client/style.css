@@ -134,7 +134,7 @@ body::after {
   display: flex; align-items: center; gap: 8px;
 }
 .hud-btn {
-  height: 44px; padding: 0 16px; border-radius: 999px;
+  height: 54px; padding: 0 16px; border-radius: 999px;
   font-size: 14px; font-weight: 700; cursor: pointer; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid rgba(245,197,66,.45);
@@ -144,8 +144,8 @@ body::after {
 }
 .hud-btn:hover { background: rgba(245,197,66,.2); }
 .hud-btn:active { transform: translateY(1px); }
-/* "?" help: square to match its single glyph. Width = height (44px). */
-.hud-btn.help { width: 44px; padding: 0; font-size: 18px; }
+/* "?" help: square to match its single glyph. Width = height (54px). */
+.hud-btn.help { width: 54px; padding: 0; font-size: 18px; }
 /* Leave: red accent for destructive intent, restyled to match the pill family. */
 .hud-btn.leave { background: rgba(80,12,12,.55); color: #ffd6d6; border-color: var(--red); }
 .hud-btn.leave:hover { background: var(--red); color: #fff; }
@@ -194,16 +194,21 @@ body::after {
   width: 100%; max-width: 1100px; padding: 8px 16px; gap: 12px;
   position: relative; /* anchors the .game-leave-btn */
 }
-.score { font-size: 18px; display: flex; align-items: center; gap: 8px; padding: 6px 14px; min-height: 44px; border-radius: 20px; background: rgba(0,0,0,.25); flex-shrink: 0; }
-.score.team-a { border-left: 4px solid var(--teamA); }
-.score.team-b { border-right: 4px solid var(--teamB); }
+/* Score panels are stacked columns: the Tens row on top, a "Tricks won" line below.
+   min-height keeps both Team panels (and thus the HUD row) a consistent height. */
+.score { display: flex; flex-direction: column; gap: 2px; padding: 6px 14px; min-height: 54px; border-radius: 16px; background: rgba(0,0,0,.25); flex-shrink: 0; }
+.score-main { font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.tricks-line { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .3px; }
+.tricks-line b { font-size: 13px; color: var(--gold); }
+.score.team-a { border-left: 4px solid var(--teamA); align-items: flex-start; }
+.score.team-b { border-right: 4px solid var(--teamB); align-items: flex-end; }
 .score b { font-size: 26px; color: var(--gold); }
 .of { color: var(--muted); font-size: 13px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.a { background: var(--teamA); } .dot.b { background: var(--teamB); }
 .center-info {
   display: flex; flex-direction: row; align-items: stretch; justify-content: center;
-  gap: 10px; text-align: center; color: var(--muted); min-height: 44px;
+  gap: 10px; text-align: center; color: var(--muted); min-height: 54px;
 }
 /* Each stat is a small glass chip. All three share an EQUAL width (flex: 1 1 0
    + min-width) so they stay identical regardless of their content/length.
@@ -290,6 +295,62 @@ body::after {
 @keyframes ring-flash { to { opacity: 0.4; } }
 .seat .name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
 .seat .meta { font-size: 11px; color: var(--muted); }
+
+/* ---------- Lead-selection ceremony (spec §2.4) ---------- */
+/* Face-up mini card under each avatar during the pre-game draw.
+   Hidden by default (pre-flip); .reveal-N triggers a one-at-a-time flip-in. */
+.lead-card {
+  width: 38px; height: 52px; border-radius: 5px; background: #fff; color: #000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; font-weight: 800; border: 2px solid #bbb; margin: 4px 0;
+  box-shadow: 0 3px 8px rgba(0,0,0,.5);
+  opacity: 0;                 /* hidden until its reveal delay fires */
+  transform: rotateY(90deg);  /* face-down "back" before flipping */
+}
+.lead-card.red { color: var(--red); }
+.lead-card .lc-rank { font-size: 17px; line-height: 1; }
+.lead-card .lc-suit { font-size: 18px; line-height: 1; }
+/* Sequential one-at-a-time reveal: each .reveal-N card flips in after N*1300ms.
+   The slow stagger lets players actually read each card before the next flips.
+   A full 10-card round takes ~13s, giving the ceremony real drama. */
+.lead-card.reveal-0, .lead-card.reveal-1, .lead-card.reveal-2, .lead-card.reveal-3,
+.lead-card.reveal-4, .lead-card.reveal-5, .lead-card.reveal-6, .lead-card.reveal-7,
+.lead-card.reveal-8, .lead-card.reveal-9 {
+  animation: leadCardFlip .6s ease-out forwards;
+}
+.lead-card.reveal-0 { animation-delay: 0ms; }
+.lead-card.reveal-1 { animation-delay: 1300ms; }
+.lead-card.reveal-2 { animation-delay: 2600ms; }
+.lead-card.reveal-3 { animation-delay: 3900ms; }
+.lead-card.reveal-4 { animation-delay: 5200ms; }
+.lead-card.reveal-5 { animation-delay: 6500ms; }
+.lead-card.reveal-6 { animation-delay: 7800ms; }
+.lead-card.reveal-7 { animation-delay: 9100ms; }
+.lead-card.reveal-8 { animation-delay: 10400ms; }
+.lead-card.reveal-9 { animation-delay: 11700ms; }
+@keyframes leadCardFlip {
+  from { opacity: 0; transform: rotateY(90deg) scale(.9); }
+  to   { opacity: 1; transform: rotateY(0) scale(1); }
+}
+/* Eliminated in a shootout round: keep the old card visible but dimmed. */
+.lead-card.out { opacity: .35; transform: none; }
+/* Ceremony decided (winner announced): card is just visible, no re-flip on
+   re-render. Prevents the whole table re-animating when the winner highlight lands. */
+.lead-card.settled { opacity: 1; transform: none; }
+/* Winner of the ceremony: gold border + glow + celebratory pop. */
+.lead-card.winner { opacity: 1; transform: none; border-color: var(--gold); box-shadow: 0 0 14px var(--gold), 0 3px 8px rgba(0,0,0,.5); animation: leadCardWin .5s ease-out; }
+@keyframes leadCardWin { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+/* Center banner narrating the ceremony (round, ties, winner). */
+.lead-banner {
+  position: absolute; top: 62%; left: 50%; transform: translate(-50%, -50%);
+  background: rgba(0,0,0,.7); color: var(--gold); padding: 8px 18px; border-radius: 999px;
+  border: 1px solid rgba(245,197,66,.4); font-size: 13px; font-weight: 700; letter-spacing: .3px;
+  white-space: nowrap; z-index: 4; text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.5);
+}
+.lead-banner.hidden { display: none; }
+
 /* "thinking" indicator — three gold dots that ripple in sequence (chat-style
    typing bubble). Replaces the old italic "thinking…" text. */
 .thinking-dots { display: inline-flex; gap: 4px; align-items: center; justify-content: center; padding: 2px 0; }
@@ -371,28 +432,52 @@ body::after {
 
 /* ---------- Hand ---------- */
 #hand-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-bottom: 4px; }
-#hand-label { font-size: 12px; color: var(--muted); }
+#hand-label { font-size: 12px; color: var(--muted); transition: color .15s; }
 #hand {
   display: flex; justify-content: center; flex-wrap: nowrap; overflow-x: auto;
-  padding: 8px 4px; max-width: 100vw; gap: 0;
+  /* padding-top gives the hover-lift (-24px) headroom so a lifted card isn't
+     clipped by the scroll container's vertical overflow (overflow-x:auto also
+     constrains overflow-y to auto). 26px = lift + a hair of breathing room. */
+  padding: 26px 4px 8px; max-width: 100vw; gap: 0;
 }
 .card {
-  width: 60px; height: 84px; border-radius: 7px;
+  width: 66px; height: 92px; border-radius: 7px;
   background: #fff; color: var(--black);
   display: flex; flex-direction: column; justify-content: space-between;
-  padding: 5px 6px; font-weight: 700; cursor: pointer;
-  border: 2px solid #ccc; flex-shrink: 0; margin-left: -22px;
-  box-shadow: 0 3px 6px rgba(0,0,0,.4); transition: transform .12s, margin .12s;
+  padding: 6px 7px; font-weight: 700; cursor: pointer;
+  border: 2px solid #ccc; flex-shrink: 0; margin-left: -26px;
+  box-shadow: 0 3px 6px rgba(0,0,0,.4); transition: transform .12s, margin .12s, box-shadow .12s;
   position: relative;
 }
 .card:first-child { margin-left: 0; }
+/* New suit group -> extra left gap so the hand clusters into 4 piles. */
+.card.suit-break { margin-left: 8px; }
 .card.red { color: var(--red); }
-.card:hover { transform: translateY(-14px); z-index: 10; }
-.card.disabled { opacity: .4; cursor: not-allowed; }
-.card.disabled:hover { transform: none; }
-.card.playable { border-color: var(--gold); }
-.card .rank { font-size: 18px; line-height: 1; }
-.card .suit { font-size: 20px; align-self: flex-end; }
+/* Every card is hover-inspectable (lifts up to read), regardless of turn.
+   This lets a waiting player plan without being able to play out of turn. */
+.card:hover { transform: translateY(-24px); z-index: 10; }
+/* .disabled = not playable this turn (illegal, or waiting). Stays readable —
+   only slightly dimmed (was .4, now .75) so you can still inspect/plan. The
+   cursor reflects intent: a legal-but-blocked card still invites inspection. */
+.card.disabled { opacity: .75; }
+/* .playable = your turn AND legal. Gold border + glow = "you may click me". */
+.card.playable { border-color: var(--gold); box-shadow: 0 3px 6px rgba(0,0,0,.4), 0 0 10px rgba(245,197,66,.35); }
+.card.playable:hover { box-shadow: 0 6px 14px rgba(0,0,0,.45), 0 0 16px rgba(245,197,66,.6); }
+/* Objective cards: Tens (race-to-13) get a PERMANENT gold corner badge + a richer
+   amber glow so they stay distinguishable from plain playable cards. The badge is
+   additive (sits on top via ::before) so it survives every state (playable/disabled),
+   and the warmer amber shadow differs from the playable gold border + glow. */
+.card.is-ten { box-shadow: 0 0 14px rgba(245,197,66,.55), 0 3px 6px rgba(0,0,0,.4); }
+.card.is-ten::before {
+  content: "★"; position: absolute; top: -1px; right: 3px;
+  font-size: 16px; line-height: 1; color: var(--gold); font-weight: 900;
+  text-shadow: 0 0 5px rgba(245,197,66,.95), 0 1px 1px rgba(0,0,0,.3);
+  pointer-events: none;
+}
+/* A playable Ten keeps the star + adds the gold playable border on top. */
+.card.is-ten.playable { border-color: var(--gold); box-shadow: 0 0 16px rgba(245,197,66,.7), 0 3px 6px rgba(0,0,0,.4); }
+.card .rank { font-size: 20px; line-height: 1; }
+.card .suit { font-size: 22px; align-self: flex-end; }
 
 .msg-bar {
   background: rgba(0,0,0,.6); color: var(--gold); padding: 6px 14px; border-radius: 8px;
@@ -473,8 +558,9 @@ body::after {
 .seat .voice-ind.muted { opacity: .6; }
 
 @media (max-width: 600px) {
-  .card { width: 48px; height: 68px; margin-left: -18px; }
-  .card .rank { font-size: 14px; } .card .suit { font-size: 16px; }
+  .card { width: 52px; height: 72px; margin-left: -20px; }
+  .card.suit-break { margin-left: 6px; }
+  .card .rank { font-size: 15px; } .card .suit { font-size: 17px; }
   .seat { width: 72px; }
   .seat .avatar { width: 36px; height: 36px; font-size: 14px; }
   #table { height: 50vh; }
@@ -483,8 +569,8 @@ body::after {
   .center-info { flex-wrap: wrap; gap: 6px; }
   .center-info > div { min-width: 0; padding: 4px 10px; font-size: 12px; }
   /* Buttons stay accessible but shrink on narrow screens. */
-  .hud-btn { height: 36px; padding: 0 12px; font-size: 13px; }
-  .hud-btn.help { width: 36px; font-size: 15px; }
+  .hud-btn { height: 44px; padding: 0 12px; font-size: 13px; }
+  .hud-btn.help { width: 44px; font-size: 15px; }
   /* Chat: full-width slide-up drawer on mobile */
   #chat-panel { left: 8px; right: 8px; width: auto; top: auto; bottom: 108px; height: 30vh; max-height: 280px; }
   .chat-toggle { display: flex; }
@@ -652,3 +738,33 @@ body::after {
 
 /* --- "How to Play" menu button + in-match help button --- */
 #howto-btn.done::after { content: " ✓"; color: #cde8d4; }
+
+/* ===================== DEBUG PANEL (only loads via ?debug=1) ===================== */
+/* A sibling of #app, fixed bottom-right, never affected by screen .hidden toggles. */
+#dbg-panel {
+  position: fixed; bottom: 8px; right: 8px; z-index: 99999;
+  width: 420px; max-width: 95vw; height: 280px; max-height: 60vh;
+  background: rgba(10,12,18,.92); color: #cde; border: 1px solid #3a4a6a;
+  border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.6);
+  display: flex; flex-direction: column; font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+}
+#dbg-panel.dbg-collapsed { height: 30px; overflow: hidden; }
+.dbg-bar { display: flex; align-items: center; gap: 4px; padding: 4px 6px; background: rgba(255,255,255,.05); border-bottom: 1px solid #2a3a5a; }
+.dbg-title { color: var(--gold); font-size: 12px; }
+.dbg-spacer { flex: 1; }
+.dbg-tab, .dbg-act {
+  background: rgba(255,255,255,.06); color: #9ab; border: 1px solid #2a3a5a;
+  border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-family: inherit;
+}
+.dbg-tab.active { background: var(--gold); color: #000; border-color: var(--gold); }
+.dbg-tab:hover, .dbg-act:hover { background: rgba(255,255,255,.15); }
+.dbg-search { width: 70px; background: rgba(0,0,0,.4); color: #cde; border: 1px solid #2a3a5a; border-radius: 4px; padding: 2px 4px; font-size: 10px; font-family: inherit; }
+.dbg-list { flex: 1; overflow-y: auto; padding: 4px 6px; line-height: 1.5; }
+.dbg-row { display: flex; gap: 6px; white-space: nowrap; }
+.dbg-time { color: #5a7; flex-shrink: 0; }
+.dbg-text { color: #cde; overflow: hidden; text-overflow: ellipsis; }
+/* Color-code by kind for quick scanning. */
+.dbg-msg .dbg-text { color: #8cf; }      /* messages: blue */
+.dbg-click .dbg-text { color: #fd8; }     /* clicks: amber */
+.dbg-state .dbg-text { color: #fb7; }     /* state changes: orange */
+.dbg-screen .dbg-text { color: #a8f; }    /* screen transitions: purple */

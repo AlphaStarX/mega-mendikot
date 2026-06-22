@@ -194,6 +194,8 @@ Before dealing the real hands, determine who plays first using a **separate sele
 
 > **The Lead Player leads trick 1.** After that, whoever wins a trick leads the next one.
 
+> 🎬 **In the digital game:** lead selection is a **visible on-screen ceremony**. Before the real hand is dealt, one face-up card flips at each seat; tied cards trigger a "shootout" redraw among only the tied players. The winner is highlighted, then the 18-card hands are dealt and play begins.
+
 ### Step 4 — Shuffle and Deal the Main Deck
 
 1. Thoroughly **shuffle all 192 cards**.

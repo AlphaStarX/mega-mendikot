@@ -105,6 +105,14 @@ To prevent unfair first-trick advantages and distribute rewards evenly, the 12 k
    * **Recursion Cap**: The redraw is bounded at **20 iterations**. If a tie somehow persists past the cap (statistically negligible), the **lowest seat index** among the final tied set is declared the Lead Player as a deterministic fallback.
 4. Once the lead player is established, the selection deck and all dealt selection cards are **discarded**; the main deck is **shuffled independently**, and the actual 18-card hands and 12-card kitty are established from it.
 
+> **✨ AMENDMENT (v1.3.2, 2026-06-20):** Lead selection is now a **visible on-screen
+> ceremony** that plays out *before* the main hand is dealt. The server runs a new
+> transient `LEAD_SELECT` match state: cards flip face-up at each seat, tied seats
+> redraw in "shootout" rounds (only the tied players), and the unique winner is
+> highlighted before dealing begins. This visualizes §2.4 as specified — the rules
+> above are unchanged; only the client/server *presentation* is new. Implementation:
+> `runLeadSelectRound()` / `resolveLeadSelect()` in `game-room.js`.
+
 ### 2.5 Trick Rules & Turn Execution
 * **Trick Structure**: A trick consists of one card played by each player in clockwise seating order (ascending seat index, modulo 10), starting with the lead player.
 * **Following Suit**: The suit of the card played by the lead player is the **Lead Suit**. All subsequent players must play a card of the lead suit if they have one in their hand.

@@ -23,7 +23,8 @@ test("full all-bot match completes with a valid winner", async () => {
   const room = new GameRoom("TESTRM");
   // No humans added — all 10 seats stay bots.
   room.start();
-  await realSleep(3000);
+  // Ceremony + bot match run via staged timers; wait for completion.
+  await realSleep(5000);
   assert.equal(room.matchState, "FINISHED", "match reached FINISHED");
   const total = room.score.A + room.score.B;
   assert.ok(total <= TOTAL_TENS, `captured tens ${total} must not exceed ${TOTAL_TENS}`);
@@ -37,14 +38,29 @@ test("match consumes exactly the tricks it played; no cards vanish", async () =>
   const restore = fastTimers();
   const room = new GameRoom("TEST2");
   room.start();
-  const dealt = room.seats.reduce((n, s) => n + s.hand.length, 0) + room.kitty.length;
-  assert.equal(dealt, 192, "180 in hands + 12 kitty");
-  await realSleep(3000);
+  // The lead-selection ceremony runs first (staged timers); the real 192-card
+  // hand isn't dealt until it resolves. Wait for FINISHED, then verify.
+  await realSleep(5000);
   assert.equal(room.matchState, "FINISHED");
+  // After a full match, hands are nearly empty; verify no cards vanished: the
+  // cards still in hands + 10 per trick played must equal the original 180 dealt.
   const inHands = room.seats.reduce((n, s) => n + s.hand.length, 0);
   assert.equal(inHands + Math.min(room.trickNumber, 18) * 10, 180,
     `hand+played must conserve 180 (hands=${inHands}, tricks=${room.trickNumber})`);
+  assert.equal(room.kitty.length, 12, "kitty is always 12 cards");
   assert.ok(room.kittyIdx <= 12, `kitty revealed ${room.kittyIdx} <= 12`);
+  restore();
+});
+
+test("lead-selection ceremony sets a valid leadSeat (>= 0, unique winner)", async () => {
+  const restore = fastTimers();
+  const room = new GameRoom("LEAD1");
+  room.start();
+  // Ceremony runs via staged timers; the real deal + leadSeat assignment happen
+  // once it resolves. Match goes all-bot so it completes on its own.
+  await realSleep(3500);
+  assert.ok(room.leadSeat >= 0 && room.leadSeat < 10, `leadSeat valid: ${room.leadSeat}`);
+  assert.equal(room.matchState, "FINISHED", "match still completes after ceremony");
   restore();
 });
 
@@ -103,6 +119,8 @@ test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async
   const ws = capturingWs("u1");
   room.addHuman(ws, "u1", "Ann");
   room.start();
+  // Ceremony runs first; init is sent only after it resolves. Await the timers.
+  await realSleep(200);
   const init = ws._sent.find((m) => m.t === "init");
   assert.ok(init, "human received init");
   assert.equal(init.voiceToken, undefined, "no voice token when unconfigured");
@@ -129,11 +147,14 @@ test("with voice configured, connected humans get team-scoped tokens on start an
 
   // Bots never receive tokens; only the human does.
   room.start();
+  // The lead-selection ceremony runs first; the init (with voice tokens) is sent
+  // only once it resolves and the real hand deals. Let the staged timers fire.
+  await realSleep(200);
   const init = ws._sent.find((m) => m.t === "init");
   assert.ok(init, "human received init");
   assert.equal(init.voiceUrl, "wss://lk.test");
   assert.equal(init.voiceRoom, `mm_V2_${team}`, "token is for this human's team room");
-  assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part JWT");
+  assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part jwt");
 
   await realSleep(8000);
   assert.equal(room.matchState, "FINISHED", "match ended");
@@ -155,6 +176,8 @@ test("opposing-team humans are placed in different voice rooms", async () => {
   const sA = room.addHuman(wsA, "uA", "Ann");
   const sB = room.addHuman(wsB, "uB", "Ben");
   room.start();
+  // Ceremony runs first; init is sent only after it resolves. Await the timers.
+  await realSleep(200);
   const initA = wsA._sent.find((m) => m.t === "init");
   const initB = wsB._sent.find((m) => m.t === "init");
   assert.notEqual(initA.voiceRoom, initB.voiceRoom, "opponents get different voice rooms");

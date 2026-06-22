@@ -56,6 +56,7 @@ const state = {
   trumpSuit: "",
   activeSeat: -1,
   score: { A: 0, B: 0 },
+  tricksWon: { A: 0, B: 0 },
   turnTime: 20,
   turnWarningSeat: null,  // seat under 5s warning (ring flashes red)
   playedCards: [],
@@ -65,6 +66,11 @@ const state = {
   thinkingSeat: null,
   myTurn: false,
   myTeam: null,        // for team chat routing/display
+  // --- Lead-selection ceremony (spec §2.4, visible) ---
+  leadSelectActive: false,   // true while the ceremony is playing out
+  leadSelectCards: {},       // seat -> {card} face-up selection card per seat
+  leadSelectWinner: null,    // seat that won the ceremony (once decided)
+  leadSelectActiveSeats: null, // seats dealt a card THIS round (for staggered reveal)
   chatLog: [],         // ephemeral chat messages for the current match
   // --- LiveKit team voice (match-only, §6.1) ---
   voiceRoom: null,     // livekit.Room instance once connected
@@ -85,6 +91,37 @@ const state = {
   pendingName: null,   // guest name to send with join
 };
 
+// Reset all per-match client state to a clean baseline. Called on every match
+// teardown (leave, rematch, match-end) so a fresh match never inherits stale
+// table/hand/ceremony data from the previous one. Preserves connection + auth
+// fields (ws, token, userName) which survive across matches.
+function resetMatchState() {
+  state.hand = [];
+  state.playedCards = [];
+  state.score = { A: 0, B: 0 };
+  state.tricksWon = { A: 0, B: 0 };
+  state.trickNumber = 1;
+  state.leadSuit = "";
+  state.trumpSuit = "";
+  state.activeSeat = -1;
+  state.winnerSeat = null;
+  state.thinkingSeat = null;
+  state.kittyActive = false;
+  state.kittyLeft = 0;
+  state.myTurn = false;
+  // Ceremony — must be cleared or stale cards render over the next match.
+  state.leadSelectActive = false;
+  state.leadSelectCards = {};
+  state.leadSelectWinner = null;
+  state.leadSelectActiveSeats = null;
+  hideLeadBanner();
+  // Also clear the rendered table so old cards/scores don't linger visually.
+  const table = $("table");
+  if (table) table.innerHTML = "";
+  const hand = $("hand");
+  if (hand) hand.innerHTML = "";
+}
+
 // ---------- connection ----------
 // Opens the socket. If we have a stored token, we authenticate first and defer
 // the `join` until the server confirms (so an authenticated user reclaims by
@@ -93,6 +130,14 @@ function connect(name, opts = {}) {
   state.pendingMode = opts.mode || "quick";
   state.pendingRoomId = opts.roomId || null;
   state.pendingName = name;
+  // A brand-new join must not inherit ceremony/game state from a previous match.
+  // Clear everything so we start from a clean slate (lobby first, then start).
+  state.leadSelectActive = false;
+  state.leadSelectCards = {};
+  state.leadSelectWinner = null;
+  state.leadSelectActiveSeats = null;
+  state.playedCards = [];
+  state.hand = [];
 
   // If the existing socket (e.g. from signup/login) is open and authenticated,
   // reuse it — just send the join on it. Avoids duplicate-socket confusion.
@@ -145,10 +190,12 @@ function sendJoin(name, mode, roomId) {
 }
 
 function send(obj) {
+  if (window.__dbg) window.__dbg._out(obj);          // debug trace (no-op if debug not loaded)
   if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify(obj));
 }
 
 function handle(m) {
+  if (window.__dbg) window.__dbg._in(m);              // debug trace (no-op if debug not loaded)
   switch (m.t) {
     case "hello": break;
     case "authOk": onAuthOk(m); break;
@@ -156,6 +203,8 @@ function handle(m) {
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
+    case "leadSelectEnter": onLeadSelectEnter(m); break;
+    case "leadSelect": onLeadSelect(m); break;
     case "init": onInit(m); break;
     case "trickStart": onTrickStart(m); break;
     case "played": onPlayed(m); break;
@@ -283,6 +332,52 @@ function findMySeat(seats) {
   return me ? me.seat : null;
 }
 
+// ---------- lead-selection ceremony (spec §2.4, visible) ----------
+// Server tells us to show the game table (empty) so the ceremony can play out.
+function onLeadSelectEnter(m) {
+  state.you = m.you;
+  state.seats = m.seats;
+  const me = m.seats.find((s) => s.seat === m.you);
+  state.myTeam = me ? me.team : null;
+  state.leadSelectActive = true;
+  state.leadSelectCards = {};
+  state.leadSelectWinner = null;
+  state.leadSelectActiveSeats = null;
+  state.hand = [];            // no hand dealt yet
+  state.score = { A: 0, B: 0 };
+  state.tricksWon = { A: 0, B: 0 };
+  state.trickNumber = 1;
+  showScreen("game-screen");
+  renderSeats();
+  renderHand();
+  showLeadBanner("Determining first lead…");
+}
+
+// A round of selection cards (face-up), or the final winner.
+function onLeadSelect(m) {
+  if (m.winner !== undefined && m.winner !== null) {
+    // Ceremony decided — highlight the winner, then the real deal (init) follows.
+    state.leadSelectWinner = m.winner;
+    state.leadSelectActiveSeats = null;
+    renderSeats();
+    const wc = m.winnerCard;
+    showLeadBanner(`Seat ${m.winner + 1} leads with ${RANK_NAME[wc.rank]}${SUIT_GLYPH[wc.suit]}`);
+    return;
+  }
+  // A round of cards. allCards carries every currently-visible selection card so
+  // we can dim the eliminated ones on shootout rounds. activeSeats tells us which
+  // seats got a NEW card this round (those reveal one-at-a-time, staggered).
+  const map = {};
+  for (const c of (m.allCards || m.cards)) map[c.seat] = { card: c.card };
+  state.leadSelectCards = map;
+  state.leadSelectActiveSeats = m.activeSeats || Object.keys(map).map(Number);
+  renderSeats();
+  const label = m.round === 1
+    ? `Lead selection — dealing cards…`
+    : `Shootout — ${m.activeSeats.length} players tied (round ${m.round})`;
+  showLeadBanner(label);
+}
+
 // ---------- game state handlers ----------
 function onInit(m) {
   state.you = m.you;
@@ -293,11 +388,17 @@ function onInit(m) {
   state.trumpSuit = m.trumpSuit;
   state.activeSeat = m.activeSeat;
   state.score = m.score;
+  if (m.tricksWon) state.tricksWon = m.tricksWon;
   state.turnTime = m.turnTime;
   state.playedCards = m.playedCards || [];
   state.kittyActive = !!m.kittyActive;
   state.kittyLeft = m.kittyLeft;
   state.thinkingSeat = null;
+  // Real hand has arrived — tear down the lead-selection ceremony.
+  state.leadSelectActive = false;
+  state.leadSelectCards = {};
+  state.leadSelectWinner = null;
+  hideLeadBanner();
   // Derive our team for chat display
   const me = m.seats.find((s) => s.seat === m.you);
   state.myTeam = me ? me.team : null;
@@ -345,6 +446,7 @@ function onPlayed(m) {
 
 function onTrickWon(m) {
   state.score = m.score;
+  if (m.tricksWon) state.tricksWon = m.tricksWon;
   state.winnerSeat = m.winnerSeat;
   state.thinkingSeat = null;
   if (m.kittyCard) {
@@ -511,12 +613,18 @@ function onMatchEnd(m) {
   const me = m.seats.find((s) => s.seat === state.you);
   const title = $("end-title");
   const scoreLine = $("end-score");
+  const tricks = m.tricksWon ? ` (tricks ${m.tricksWon.A}–${m.tricksWon.B})` : "";
   if (m.draw || !m.winningTeam) {
     // 12-12 deadlock where tricks were also tied — a genuine draw, no winner.
     title.textContent = "🤝 Draw";
     title.style.color = "var(--gold)";
-    scoreLine.textContent = `Draw  ·  A ${m.score.A} – ${m.score.B} B` +
-      (m.tricksWon ? `  (tricks ${m.tricksWon.A}–${m.tricksWon.B})` : "");
+    scoreLine.textContent = `Draw  ·  12–12 tied${tricks ? ` on tricks too` : ""}  ${tricks}`;
+  } else if (m.deadlock) {
+    // 12-12 deadlock resolved by most tricks — explain WHY this team won despite the tie.
+    const myTeamWon = me && me.team === m.winningTeam;
+    title.textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
+    title.style.color = myTeamWon ? "var(--gold)" : "var(--red)";
+    scoreLine.textContent = `Team ${m.winningTeam} wins on tricks  ·  A 12 – 12 B${tricks}`;
   } else {
     const myTeamWon = me && me.team === m.winningTeam;
     title.textContent = myTeamWon ? "🎉 You Win!" : "💀 You Lost";
@@ -533,6 +641,9 @@ function onMatchEnd(m) {
     bd.appendChild(row);
   });
   showScreen("end-screen");
+  // The match is over — clear the in-progress game/ceremony state so a
+  // subsequent match (via rematch or leave→new game) starts from a clean slate.
+  resetMatchState();
 }
 
 // ---------- rendering ----------
@@ -617,8 +728,47 @@ function renderSeats() {
     // Turn-timer ring: only on the active seat. The progress circle is driven by
     // state.turnTime via renderTimerRing() (updated each second by the countdown).
     const timerRing = s.seat === state.activeSeat ? timerRingSvg(s.seat) : "";
+    // Lead-selection card (ceremony): face-up under the avatar while the
+    // pre-game draw plays out. Winner glows gold; eliminated/out cards dim.
+    let leadCardHtml = "";
+    // HARD GUARD: the ceremony never renders once the real game is live.
+    // If we have a hand or played cards, the match is in PLAYING — drop any
+    // stale/late ceremony state and skip lead-card rendering entirely. This
+    // catches races where a ceremony broadcast arrives after `init`.
+    if (state.leadSelectActive && (state.hand.length || (state.playedCards && state.playedCards.length))) {
+      state.leadSelectActive = false;
+      state.leadSelectCards = {};
+      state.leadSelectWinner = null;
+      hideLeadBanner();
+    }
+    if (state.leadSelectActive) {
+      const lc = state.leadSelectCards[s.seat];
+      if (lc) {
+        const isWinner = state.leadSelectWinner === s.seat;
+        const decided = state.leadSelectWinner !== null;  // ceremony is over
+        // activeSeats = seats that got a NEW card this round. Each reveals
+        // one-at-a-time, staggered by seat order (reveal-0, reveal-1, ...).
+        // Seats NOT in the active set (eliminated in an earlier shootout round)
+        // keep showing their old card, dimmed (.out).
+        const active = state.leadSelectActiveSeats;
+        const isActive = !active || active.includes(s.seat);
+        const revealIdx = active ? active.indexOf(s.seat) : s.seat;
+        let cls = "lead-card" + (SUIT_COLOR[lc.card.suit] === "red" ? " red" : "");
+        if (isWinner) {
+          cls += " winner";               // gold glow + pop
+        } else if (decided) {
+          cls += " settled";              // ceremony decided: just visible, no re-flip
+        } else if (isActive) {
+          cls += ` reveal-${Math.min(revealIdx, 9)}`;
+        } else {
+          cls += " out";                  // eliminated in a shootout: dimmed
+        }
+        leadCardHtml = `<div class="${cls}"><span class="lc-rank">${RANK_NAME[lc.card.rank]}</span><span class="lc-suit">${SUIT_GLYPH[lc.card.suit]}</span></div>`;
+      }
+    }
     el.innerHTML = `
       <div class="avatar">${initials}${voiceGlyph}${timerRing}</div>
+      ${leadCardHtml}
       <div class="name">${s.seat === state.you ? "You" : s.name}</div>
       ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
     table.appendChild(el);
@@ -741,10 +891,29 @@ function renderHand() {
     return b.rank - a.rank;
   });
   const myTurn = state.myTurn;
+  // The hand label reflects whose turn it is so the player knows whether clicking
+  // will play a card or just inspect.
+  const label = $("hand-label");
+  if (label) label.textContent = myTurn ? "Your turn — click a playable card" : "Your hand (waiting for your turn)";
+
+  let prevSuit = null;
   sorted.forEach((card) => {
     const el = document.createElement("div");
     const playable = myTurn && isPlayable(card);
-    el.className = "card" + (SUIT_COLOR[card.suit] === "red" ? " red" : "") + (myTurn ? (playable ? " playable" : " disabled") : " disabled");
+    const isTenCard = card.rank === 10;
+    // Class logic separates "inspectable" from "playable":
+    //  - .disabled = not playable THIS turn (illegal, or not your turn). Still
+    //    hover-inspectable unless explicitly locked (see CSS).
+    //  - .playable = legal AND your turn -> clickable.
+    //  - .is-ten = objective card, always highlighted.
+    let cls = "card" + (SUIT_COLOR[card.suit] === "red" ? " red" : "");
+    cls += playable ? " playable" : " disabled";
+    if (isTenCard) cls += " is-ten";
+    // Open a new suit group with an extra left margin so the hand clusters into
+    // 4 visible piles (♠ ♥ ♦ ♣) instead of one uniform fan.
+    if (prevSuit !== null && card.suit !== prevSuit) cls += " suit-break";
+    prevSuit = card.suit;
+    el.className = cls;
     el.innerHTML = `<div class="rank">${RANK_NAME[card.rank]}</div><div class="suit">${SUIT_GLYPH[card.suit]}</div>`;
     if (playable) el.addEventListener("click", () => playCard(card.id));
     hand.appendChild(el);
@@ -754,6 +923,11 @@ function renderHand() {
 function renderHud() {
   $("score-a").textContent = state.score.A;
   $("score-b").textContent = state.score.B;
+  // Live tricks-won counter (the 12-12 deadlock tiebreak). Falls back to 0
+  // gracefully if the server (or an older state message) omits tricksWon.
+  const tw = state.tricksWon || { A: 0, B: 0 };
+  $("tricks-a").textContent = tw.A;
+  $("tricks-b").textContent = tw.B;
   $("trick-num").textContent = state.trickNumber;
   const td = $("trump-display");
   if (state.trumpSuit) {
@@ -829,6 +1003,19 @@ function showMsg(text) {
   showMsg._t = setTimeout(() => bar.classList.add("hidden"), 2600);
 }
 
+// Lead-selection ceremony banner (center of table). Persistent (no auto-hide)
+// since it narrates the whole ceremony; cleared on real deal.
+function showLeadBanner(text) {
+  const b = $("lead-banner");
+  if (!b) return;
+  b.textContent = text;
+  b.classList.remove("hidden");
+}
+function hideLeadBanner() {
+  const b = $("lead-banner");
+  if (b) b.classList.add("hidden");
+}
+
 // ---------- UI wiring ----------
 function getName() { return ($("name-input").value.trim() || "Player"); }
 
@@ -849,6 +1036,7 @@ $("lobby-start-btn").addEventListener("click", () => send({ t: "startGame" }));
 $("lobby-leave-btn").addEventListener("click", () => {
   disconnectVoice();
   stopTurnCountdown();
+  resetMatchState();
   if (state.ws) state.ws.close();
   state.room = null; state.you = null;
   showScreen("join-screen");
@@ -857,6 +1045,7 @@ $("lobby-leave-btn").addEventListener("click", () => {
 $("game-leave-btn").addEventListener("click", () => {
   disconnectVoice();
   stopTurnCountdown();
+  resetMatchState();
   if (state.ws) state.ws.close();
   state.room = null; state.you = null;
   showChatPanel(false);
@@ -865,6 +1054,7 @@ $("game-leave-btn").addEventListener("click", () => {
 $("rematch-btn").addEventListener("click", () => {
   disconnectVoice();
   stopTurnCountdown();
+  resetMatchState();
   if (state.ws) state.ws.close();
   state.you = null; state.room = null;
   showChatPanel(false);
@@ -926,3 +1116,8 @@ if (state.token) {
   if (state.ws.readyState === 1) send({ t: "authenticate", token: state.token });
   else state.ws.onopen = () => send({ t: "authenticate", token: state.token });
 }
+
+// Debug panel: only loaded if the server's debug gate passed (?debug=1 locally,
+// ?debug=1&key=SECRET on live). hook() wires the trace; if debug.js never loaded,
+// window.__dbg is undefined and this is a no-op. Normal players see nothing.
+if (window.__dbg) window.__dbg.hook({ state, showScreen });

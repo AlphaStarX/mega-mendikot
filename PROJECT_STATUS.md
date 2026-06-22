@@ -40,9 +40,13 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 - **Bot AI** (`shared/bot.js`): full heuristic tree (lead L-1..4, follow F-1..3, trump
   declaration T-1..2, endgame secure/desperation). Unit-tested in `test/bot.test.js`
   (13 cases, one per heuristic + guards).
-- **Match lifecycle** (`server/game-room.js`): LOBBY → DEALING → PLAYING → FINISHED, lead
-  selection, 20s turn timer with auto-play, trump establishment, per-trick kitty reveal,
+- **Match lifecycle** (`server/game-room.js`): LOBBY → LEAD_SELECT → DEALING → PLAYING → FINISHED,
+  lead selection, 20s turn timer with auto-play, trump establishment, per-trick kitty reveal,
   reconnection + bot takeover.
+- **Visible lead-selection ceremony**: before the real hand deals, one face-up card flips at each
+  seat from a separate selection deck; tied seats redraw in shootout rounds until one player holds
+  the unique highest card. The winner is highlighted, then play begins. Server-driven staged
+  timers; client renders face-up cards + a narrating banner.
 - **Multi-room matchmaking**: quick-match auto-fill (bots after 20s), private rooms with
   shareable 4-char codes, `?room=XXXX` deep-links, host concept.
 - **Web client** (`client/`): vanilla HTML/CSS/JS, 10-seat perspective-rotated table,
@@ -129,13 +133,13 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   - `test/debug-gate.test.js` — the full gate truth table (opt-in, loopback, key match,
     IPv4-mapped IPv6, the loopback-wins short-circuit).
   - `test/debug-http.test.js` — spawns the real server and asserts the script injection
-    end-to-end (`?debug=1` injects, no-param does not, only `index.html` gets it, path
+    end-to-end (`?debug=1` injects, no-param doesn't, only `index.html` gets it, path
     traversal rejected). Also asserts **load order**: `debug.js` before `client.js`
-    (regression guard for bug #2 below) and `debug-helpers.js` before `debug.js`.
+    (regression guard for bug #2 above) and `debug-helpers.js` before `debug.js`.
   - `test/debug-helpers.test.js` — the pure `summarize` / `buildSnapshot` / `diffState`
     logic in Node (no DOM lib).
   - `docs/debug-qa-checklist.md` — manual checklist for the interactive panel features
-    (filters, search, pause, copy, clear, collapse) that cannot be auto-tested without
+    (filters, search, pause, copy, clear, collapse) that can't be auto-tested without
     a DOM library.
 - **Refactor for testability** (behaviour unchanged): `debugAllowed` + `DEBUG_KEY`
   extracted into `server/debug-gate.js` (importable, same pattern as `auth.js` /

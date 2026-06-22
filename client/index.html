@@ -67,13 +67,19 @@
     <!-- Game screen -->
     <section id="game-screen" class="screen hidden">
       <header id="hud">
-        <div class="score team-a"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
+        <div class="score team-a">
+          <div class="score-main"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
+          <div class="tricks-line">Tricks won: <b id="tricks-a">0</b></div>
+        </div>
         <div class="center-info">
           <div id="trump-info" class="trump-info">Trump: <b id="trump-display"></b></div>
           <div id="lead-info" class="info-line hidden">Lead: <b id="lead-display">—</b></div>
           <div id="trick-info">Trick: <b id="trick-num">1</b>/18</div>
         </div>
-        <div class="score team-b">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
+        <div class="score team-b">
+          <div class="score-main">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
+          <div class="tricks-line">Tricks won: <b id="tricks-b">0</b></div>
+        </div>
       </header>
 
       <div class="hud-controls">
@@ -93,6 +99,7 @@
               </div>
               <div id="kitty-count" class="kitty-count"></div>
             </div>
+            <div id="lead-banner" class="lead-banner hidden"></div>
           </div>
         </div>
       </div>

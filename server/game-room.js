@@ -16,6 +16,9 @@ export const TURN_SECONDS = 20;     // spec §2.9
 const BOT_DELAY_MIN_MS = 1500;      // bots "think" before playing
 const BOT_DELAY_MAX_MS = 3200;
 const RESOLVE_DELAY_MS = 2600;      // let client animate trick capture + kitty flip
+const LEAD_CARD_DEAL_MS = 1300;     // stagger between lead-selection cards flipping (matches client; ~13s for 10 cards)
+const LEAD_PAUSE_MS = 2500;         // pause after the last card flips before resolving the round
+const LEAD_WINNER_MS = 3500;        // hold the winner highlight so players can read who led before dealing
 const RECONNECT_GRACE_MS = 60000;   // spec §4.4
 
 // Build the table seating: 10 alternating seats, teams A/B per §2.2/§2.10.
@@ -58,6 +61,12 @@ export class GameRoom {
     this.playedCards = [];        // current trick
     this.activeSeat = -1;
     this.leadSeat = -1;
+    // Lead-selection ceremony state (spec §2.4, made visible). A separate
+    // shuffled deck deals one card per seat; tied seats redraw until unique.
+    this.leadSelectDeck = [];     // remaining selection cards
+    this.leadSelectCards = {};    // seat -> { card, round } (current visible card per seat)
+    this.leadSelectRound = 0;     // current shootout round (1-based)
+    this.leadSelectTimer = null;  // staged-ceremony timer handle
     this.lastTrickWinnerTeam = null; // team that won the most recent trick
     this.tricksWon = { A: 0, B: 0 }; // tricks captured per team (deadlock tiebreak)
 
@@ -121,9 +130,76 @@ export class GameRoom {
 
   start() {
     if (this.matchState !== "LOBBY") return false;
-    // Ensure all non-human seats are bots (they already are from makeSeats)
+    // Lead-selection ceremony FIRST (spec §2.4, now visible). We deal one card
+    // per seat from a SEPARATE shuffled deck; the unique-highest becomes lead.
+    // Tied seats redraw in shootout rounds. Real hand is dealt only after.
+    this.matchState = "LEAD_SELECT";
+    this.leadSelectDeck = shuffle(buildDeck()); // separate from the play deck
+    this.leadSelectCards = {};
+    this.leadSelectRound = 0;
+    this.log.push("Match starting: lead-selection ceremony.");
+    // Tell clients to show the game table (empty) for the ceremony.
+    for (const s of this.seats) if (s.isHuman) this.sendLeadSelectEnter(s.seat);
+    // Kick off round 1 after a brief beat so the table can render.
+    this.leadSelectTimer = setTimeout(() => this.runLeadSelectRound(), 400);
+    return true;
+  }
+
+  // Deal one selection card to each ACTIVE seat for this round, broadcast the
+  // face-up cards (staggered), then schedule resolution.
+  runLeadSelectRound(activeSeats = null) {
+    this.leadSelectRound++;
+    // Round 1 = all 10 seats; shootout rounds = only the previously-tied seats.
+    const seats = activeSeats || Array.from({ length: PLAYERS }, (_, i) => i);
+    const cards = [];
+    for (const seat of seats) {
+      const card = this.leadSelectDeck.pop() || { suit: "SPADES", rank: 7 };
+      this.leadSelectCards[seat] = { card, round: this.leadSelectRound };
+      cards.push({ seat, card: this.cardView(card) });
+    }
+    const totalSeats = Object.keys(this.leadSelectCards).length;
+    this.broadcast({
+      t: "leadSelect",
+      round: this.leadSelectRound,
+      activeSeats: seats,
+      cards,
+      // send ALL currently-visible cards so the client can dim the eliminated ones
+      allCards: Object.entries(this.leadSelectCards).map(([seat, c]) => ({ seat: +seat, card: this.cardView(c.card) })),
+      totalSeats,
+    });
+    const stagger = cards.length * LEAD_CARD_DEAL_MS;
+    this.leadSelectTimer = setTimeout(() => this.resolveLeadSelect(seats), LEAD_PAUSE_MS + stagger);
+  }
+
+  // Determine the round's unique max rank. If one seat holds it -> lead decided.
+  // If multiple tie -> run another shootout round with only the tied seats.
+  resolveLeadSelect(activeSeats) {
+    let maxRank = -1;
+    for (const seat of activeSeats) {
+      const c = this.leadSelectCards[seat];
+      if (c && c.card.rank > maxRank) maxRank = c.card.rank;
+    }
+    const tied = activeSeats.filter((seat) => this.leadSelectCards[seat].card.rank === maxRank);
+    if (tied.length === 1) {
+      // Unique winner — announce, then deal the real hand.
+      const winner = tied[0];
+      const wc = this.leadSelectCards[winner].card;
+      this.leadSeat = winner;
+      this.broadcast({ t: "leadSelect", winner, winnerCard: this.cardView(wc), round: this.leadSelectRound });
+      this.log.push(`Lead selection: seat ${winner} wins round ${this.leadSelectRound} with rank ${wc.rank}.`);
+      this.leadSelectTimer = setTimeout(() => this.dealRealHand(), LEAD_WINNER_MS);
+    } else {
+      // Shootout: only the tied seats redraw next round.
+      this.log.push(`Lead selection round ${this.leadSelectRound}: ${tied.length}-way tie at rank ${maxRank}; shootout.`);
+      this.leadSelectTimer = setTimeout(() => this.runLeadSelectRound(tied), 350);
+    }
+  }
+
+  // After the ceremony resolves: build + deal the real 192-card hand, start play.
+  dealRealHand() {
+    this.leadSelectTimer = null;
     this.matchState = "DEALING";
-    this.log.push("Match starting: dealing 192-card deck.");
+    this.log.push("Lead-selection complete; dealing 192-card deck.");
 
     const deck = shuffle(buildDeck());
     const { hands, kitty } = dealHands(deck);
@@ -133,21 +209,21 @@ export class GameRoom {
       this.seats[i].hand = hands[i];
       this.seats[i].cardsLeft = HAND_SIZE;
     }
-
-    // Spec §2.4: lead selection from a separate shuffled selection deck.
-    const sel = shuffle(buildDeck()).slice(0, PLAYERS).map((c) => c.rank);
-    let lead = 0, max = -1;
-    for (let i = 0; i < PLAYERS; i++) if (sel[i] > max) { max = sel[i]; lead = i; }
-    this.leadSeat = lead;
-    this.activeSeat = lead;
+    this.activeSeat = this.leadSeat;
     this.matchState = "PLAYING";
-    this.log.push(`Lead selection: seat ${lead} (rank ${max}) leads trick 1.`);
+    this.log.push(`Trick 1 lead: seat ${this.leadSeat}.`);
 
     // Send each human their personalized view (fog of war — §3.4)
     for (const s of this.seats) if (s.isHuman) this.sendInitTo(s.seat);
     this.startTurnTimer();
     this.maybeScheduleBot();
-    return true;
+  }
+
+  // Minimal nudge so a human client shows the game table for the ceremony.
+  sendLeadSelectEnter(seatIdx) {
+    const ws = this.sockets[seatIdx];
+    if (!ws || ws.readyState !== 1) return;
+    ws.send(JSON.stringify({ t: "leadSelectEnter", seats: this.seats.map((s) => ({ seat: s.seat, name: s.name, team: s.team, isBot: s.isBot })), you: seatIdx, _ts: Date.now() }));
   }
 
   // --- turn timer (spec §2.9) ---
@@ -302,6 +378,7 @@ export class GameRoom {
       kittyCard: kittyCard ? this.cardView(kittyCard) : null,
       cards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card) })),
       score: this.score,
+      tricksWon: { ...this.tricksWon },
       trickNumber: this.trickNumber,
     });
     this.log.push(`Trick ${this.trickNumber} won by seat ${winSeat} (team ${winTeam}); +${tens} tens.`);
@@ -351,10 +428,14 @@ export class GameRoom {
     // Sent first so the client disconnects its audio while it still has the game
     // view; voiceEnd is a no-op on clients that never connected.
     if (voiceConfigured()) this.broadcast({ t: "voiceEnd" });
+    // deadlock flag = the 12-12 tiebreak path was taken (score tied at match end).
+    // Lets the client distinguish a normal 13-Ten win from a tricks-decided win.
+    const deadlock = this.score.A === this.score.B;
     this.broadcast({
       t: "matchEnd",
       winningTeam,            // "A" | "B" | null (null = draw)
       draw: winningTeam === null,
+      deadlock,               // true iff decided by the 12-12 tiebreak (win or draw)
       score: this.score,
       tricksWon: { ...this.tricksWon },
       seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot })),
@@ -484,6 +565,7 @@ export class GameRoom {
       activeSeat: this.activeSeat,
       leadSeat: this.leadSeat,
       score: this.score,
+      tricksWon: { ...this.tricksWon },
       turnTime: this.turnTime,
       playedCards: this.playedCards.map((p) => ({ seat: p.seat, card: this.cardView(p.card), playOrder: p.playOrder })),
       totalTens: TOTAL_TENS,
@@ -518,6 +600,7 @@ export class GameRoom {
     this.stopTurnTimer();
     this.clearBot();
     if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
+    if (this.leadSelectTimer) { clearTimeout(this.leadSelectTimer); this.leadSelectTimer = null; }
     for (const k in this.graceHandles) clearTimeout(this.graceHandles[k]);
     this.graceHandles = {};
   }
