@@ -1,26 +1,24 @@
-# Deploying Mega Mindikot 5v5 on DigitalOcean (Toronto)
+# Deploying Mega Mindikot 5v5 on OVHcloud
 
 This is the **step-by-step runbook** for hosting the game + team voice (LiveKit) on a
-single DigitalOcean Droplet in Toronto, with automatic TLS via Caddy. Scope:
-**app + voice + accounts** — Postgres/login is included (see "Next phase" at the bottom
-for stats/OAuth/etc.).
+single OVHcloud VPS, with automatic TLS via Caddy. Scope: **app + voice + accounts**
+— Postgres/login is included (see "Next phase" at the bottom for stats/OAuth/etc.).
 
 > **Domain:** `mindikot.com` (registered at Porkbun). Hostnames:
 > `play.mindikot.com` (game) and `voice.mindikot.com` (LiveKit SFU).
 >
-> Target host: **DigitalOcean Droplet** — Basic, 2 vCPU / 4 GB / 80 GB SSD,
-> **~$24/mo** (4 TB outbound bandwidth included), region **Toronto (TOR1)**,
-> **Debian 12**. New accounts can get **$200 free credit** (valid **60 days** —
-> covers ~2 months; sign up via a referral link, not directly) or **longer via the
-> GitHub Student Pack** (~1 year). Everything here runs as root unless noted;
-> switch to a non-root user in Phase 2.
+> Target host: **OVHcloud VPS-1 2027** — 2 vCores / 4 GB RAM / 40 GB NVMe,
+> **unlimited traffic**, **~1 Gbps** public port, **~$3.50–5/mo**.
+> Region **Canada (Beauharnois, QC — `BHS`)** — the Toronto-area latency the project was
+> designed around. OS **Debian 13**. OVH **Anti-DDoS** protection is included.
+> Everything here runs as root unless noted; switch to a non-root user in Phase 2.
 
 ---
 
 ## Architecture on the box
 
 ```
-DigitalOcean Droplet — Toronto TOR1 (Debian 12)
+OVHcloud VPS — Canada BHS / Beauharnois (Debian 13)
 ├── Caddy  (ports 80/443, automatic Let's Encrypt TLS)
 │     ├── play.<domain>   ─► app:3000          (HTTP + /ws WebSocket)
 │     └── voice.<domain>  ─► livekit:7880      (WSS signaling only)
@@ -82,80 +80,100 @@ this check.
 
 ---
 
-## Phase 1 — Provision the DigitalOcean Droplet
+## Phase 1 — Provision the OVHcloud VPS
 
-1. Sign up at **[digitalocean.com](https://digitalocean.com)** — ideally via a **referral
-   link** (search "DigitalOcean $200 referral"), which gets new accounts **$200 free
-   credit valid 60 days** (signing up directly often yields only $100 or nothing). If
-   you're a student, the **[GitHub Student Pack](https://education.github.com/pack)**
-   gives longer-lived credit (~1 year). Either way, you must **add a payment method**
-   (card or PayPal) to verify the account — you won't be charged while under the credit.
-2. Create a Droplet: top-right **Create** → **Droplets**. Choose:
-   - **Image:** Debian 12 (x64) — under "Distributions"
-   - **Plan:** Basic → **Regular** → **$24/mo** (2 vCPU / 4 GB / 80 GB SSD, 4 TB transfer)
-   - **Datacenter region:** **Toronto (TOR1)** — lowest latency for Canadian players
-   - **Authentication:** **SSH Key** (add your public key — strongly recommended over a password). If you don't have one yet, generate it locally with `ssh-keygen -t ed25519` and paste the contents of `~/.ssh/id_ed25519.pub`.
-   - (Optional) Enable the free **Monitoring** and **Backups** add-ons.
-3. Click **Create Droplet**. Provisioning takes ~30–60 seconds.
-4. Copy the Droplet's **public IPv4** from the dashboard (looks like `159.203.x.x`
-   or `64.227.x.x`).
+1. Sign up at **[ovhcloud.com](https://www.ovhcloud.com)** (or `ovh.ca` for Canada).
+   You must **add a payment method** to verify the account. New VPS orders can take a
+   few minutes to a couple of hours to activate while OVH verifies the account — this
+   is normal; you'll get an activation email.
+2. Order a **VPS-1 2027**: **OVHcloud → Bare Metal Cloud → VPS → Your VPS**. Choose:
+   - **Model:** **VPS-1 2027** — 2 vCores / 4 GB RAM / 40 GB NVMe, unlimited traffic,
+     ~1 Gbps port. Enough for the game + Postgres + LiveKit + Caddy at launch scale.
+   - **Distribution/OS:** **Debian 13**.
+   - **Datacenter:** **Canada — Beauharnois (`BHS`)** — lowest latency for the
+     North-American player base the project targets.
+   - **Login:** **SSH Key** (strongly recommended). If you don't have one yet, generate
+     it locally with `ssh-keygen -t ed25519` and paste the contents of
+     `~/.ssh/id_ed25519.pub` into the order form. Alternatively, OVH sets a root
+     **password** and emails it to you — but switch to key-only auth in Phase 2 either way.
+   - **Add-ons:** OVH includes **Anti-DDoS** at the network edge for free. Daily backup
+     of the previous 24h may be included/bundled — check the order summary. Extra
+     automated backups are a low-cost add-on if you want longer retention.
+3. Complete checkout. Wait for the activation email ("Your VPS has been delivered").
+4. Copy the VPS's **public IPv4** from **OVHcloud Control Panel → Bare Metal Cloud →
+   Your services → your VPS → `IP`** (looks like `149.56.x.x`, `192.99.x.x`,
+   `158.69.x.x`, or `51.79.x.x` for BHS).
+
+> **Upgrading later:** OVH lets you change VPS models in-place from the control panel
+> (e.g. VPS-1 → VPS-2 → VPS-3). Resizing to a bigger plan keeps your data but **changes
+> your public IP** (requires DNS re-pointing + a Caddy cert re-issue), so size generously
+> upfront if you expect fast growth.
 
 ## Phase 2 — First login + harden the box
 
-5. SSH in (DigitalOcean authenticates by SSH key, so no password prompt):
+5. SSH in. If you used a password, OVH emails it to you:
    ```bash
-   ssh root@<your-ip>
+   ssh root@<your-ip>      # then enter the emailed password
    ```
-8. Update the system:
+   If you uploaded an SSH key at order time, it authenticates by key instead.
+6. Update the system:
    ```bash
    apt update && apt upgrade -y
    ```
-9. Install Docker (includes the compose plugin):
+7. Install Docker (includes the compose plugin):
    ```bash
    curl -fsSL https://get.docker.com | sh
    docker --version && docker compose version   # sanity check
    ```
-10. (Recommended) Create a non-root admin user and add it to docker:
-    ```bash
-    adduser mm
-    usermod -aG docker mm
-    mkdir -p /home/mm/.ssh && cp ~/.ssh/authorized_keys /home/mm/.ssh/ && \
-      chown -R mm:mm /home/mm/.ssh
-    ```
-11. Lock down SSH — edit `/etc/ssh/sshd_config`:
-    ```
-    PermitRootLogin no            # once you've confirmed mm can log in
-    PasswordAuthentication no     # key-only
-    ```
-    Then `systemctl restart ssh`. **Test `ssh mm@<vps-ip>` in a second terminal
-    before closing your root session.**
+8. (Recommended) Create a non-root admin user and add it to docker:
+   ```bash
+   adduser mm
+   usermod -aG docker mm
+   mkdir -p /home/mm/.ssh && cp ~/.ssh/authorized_keys /home/mm/.ssh/ && \
+     chown -R mm:mm /home/mm/.ssh
+   ```
+9. Lock down SSH — edit `/etc/ssh/sshd_config`:
+   ```
+   PermitRootLogin no            # once you've confirmed mm can log in
+   PasswordAuthentication no     # key-only
+   ```
+   Then `systemctl restart ssh`. **Test `ssh mm@<vps-ip>` in a second terminal
+   before closing your root session.**
 
 ## Phase 3 — Open firewall ports
 
-12. Configure UFW (Debian may need it installed first: `apt install -y ufw`):
-    ```bash
-    ufw default deny incoming
-    ufw default allow outgoing
-    ufw allow 22/tcp                 # SSH (consider: ufw allow from <your-ip> to any port 22)
-    ufw allow 80/tcp                 # Caddy HTTP (ACME challenge + redirect)
-    ufw allow 443/tcp                # Caddy HTTPS
-    ufw allow 443/udp                # HTTP/3 (optional)
-    ufw allow 5349/tcp               # TURN/TLS
-    ufw allow 5349/udp               # TURN/UDP
-    ufw allow 50000:60000/udp        # WebRTC media range
-    ufw --force enable
-    ufw status verbose
-    ```
-    > ⚠️ **DigitalOcean also has a separate Cloud Firewall layer** (dashboard →
-    > **Networking → Firewalls**). If you attached a Cloud Firewall to the Droplet, it
-    > sits in front of UFW and will block traffic UFW allows — so you MUST add the same
-    > inbound rules there (especially the UDP `50000-60000` media range and `5349`).
-    > If you skipped the Cloud Firewall option at Droplet creation, you can ignore this
-    > and rely on UFW alone.
+OVH has two network layers to be aware of. **Always configure the host firewall (UFW)**.
+OVH also offers a separate **Network Security / Firewall** in the control panel — leave
+it at its default unless you deliberately want a second layer.
+
+**A. Host-level firewall (UFW) — always do this** (Debian may need it installed first:
+`apt install -y ufw`):
+```bash
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow 22/tcp                 # SSH (consider: ufw allow from <your-ip> to any port 22)
+ufw allow 80/tcp                 # Caddy HTTP (ACME challenge + redirect)
+ufw allow 443/tcp                # Caddy HTTPS
+ufw allow 443/udp                # HTTP/3 (optional)
+ufw allow 5349/tcp               # TURN/TLS
+ufw allow 5349/udp               # TURN/UDP
+ufw allow 50000:60000/udp        # WebRTC media range
+ufw --force enable
+ufw status verbose
+```
+
+**B. OVH network firewall — optional.** OVH's in-control-panel firewall (Network
+Security) is **off by default**, and OVH's **Anti-DDoS** layer runs in front of it
+regardless (always on, free). You can enable the explicit network firewall for
+defense-in-depth if you want, but it's not required — UFW handles the job. If you ever
+**do** enable it, remember it sits **in front of** UFW and blocks traffic UFW allows —
+so you MUST replicate every inbound rule there (especially the UDP `50000-60000` media
+range and `5349`), or voice will silently fail. Also note OVH's network firewall only
+filters **ingress**, not egress.
 
 ## Phase 4 — Get the code onto the box
 
-13. As user `mm`, clone the repo:
+10. As user `mm`, clone the repo:
     ```bash
     cd ~
     git clone https://github.com/AlphaStarX/mega-mindikot.git
@@ -165,12 +183,12 @@ this check.
 
 ## Phase 5 — Configure secrets
 
-14. Generate a strong LiveKit secret and a short API key:
+11. Generate a strong LiveKit secret and a short API key:
     ```bash
     openssl rand -base64 32     # → this is LIVEKIT_API_SECRET
     openssl rand -hex 8         # → use as LIVEKIT_API_KEY (or pick e.g. APIxxxxxxxxxxxxx)
     ```
-15. Create the env file from the template:
+12. Create the env file from the template:
     ```bash
     cp .env.example .env
     nano .env     # fill in the four REAL values below
@@ -179,11 +197,11 @@ this check.
     PLAY_DOMAIN=play.mindikot.com
     VOICE_DOMAIN=voice.mindikot.com
     PUBLIC_IP=<vps-ip>
-    LIVEKIT_API_KEY=<the key from step 14>
-    LIVEKIT_API_SECRET=<the secret from step 14>
+    LIVEKIT_API_KEY=<the key from step 11>
+    LIVEKIT_API_SECRET=<the secret from step 11>
     LIVEKIT_URL=wss://voice.mindikot.com
     ```
-16. Put the **same** `key` + `secret` into `livekit.yaml`, and your real voice domain:
+13. Put the **same** `key` + `secret` into `livekit.yaml`, and your real voice domain:
     ```bash
     nano livekit.yaml
     # set: key, secret, and turn.domain  (match .env exactly)
@@ -195,13 +213,13 @@ this check.
 
 TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 
-17. **Option A — let Caddy obtain it, then point LiveKit at it.** Simplest path:
+14. **Option A — let Caddy obtain it, then point LiveKit at it.** Simplest path:
     - Start the stack (Phase 8) **once** so Caddy fetches a cert for `voice.<domain>`.
     - Caddy stores certs under its data volume. Symlink or copy the `voice.*` cert+key
       into `./certs/turn.crt` and `./certs/turn.key`, then `docker compose restart livekit`.
     - (Caddy's on-disk cert paths are keyed by hostname under the `caddy_data` volume.)
 
-18. **Option B — issue a standalone cert with certbot** (cleaner, independent of Caddy):
+15. **Option B — issue a standalone cert with certbot** (cleaner, independent of Caddy):
     ```bash
     apt install -y certbot
     certbot certonly --standalone -d voice.mindikot.com
@@ -218,13 +236,13 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 
 ## Phase 7 — Bring it up
 
-19. From the `deploy/` directory:
+16. From the `deploy/` directory:
     ```bash
     docker compose up -d --build
     docker compose ps             # all three services: running
     docker compose logs -f        # tail logs (Ctrl-C to exit, services keep running)
     ```
-20. Confirm each piece:
+17. Confirm each piece:
     - **App:** `curl -k https://localhost/health` → `ok` (after Caddy has a cert),
       or `curl http://localhost:3000/` from the host.
     - **LiveKit signaling:** `curl http://localhost:7880` → a LiveKit response (not connection refused).
@@ -233,19 +251,19 @@ TURN/TLS needs a real cert for `voice.<domain>`. Two options:
 
 ## Phase 8 — Verify end-to-end
 
-21. **Game loads:** open `https://play.mindikot.com` → you should see the join screen,
+18. **Game loads:** open `https://play.mindikot.com` → you should see the join screen,
     valid padlock (TLS works).
-22. **A match runs:** Quick Match → a game starts, cards play, bots work.
-23. **Voice works (same team):**
+19. **A match runs:** Quick Match → a game starts, cards play, bots work.
+20. **Voice works (same team):**
     - Open a **private room**, copy the share link.
     - Open the link in **two browser tabs** (or two devices) on the same network.
     - Join both as humans; they'll be placed to balance teams. If they end up on different
       teams, create two private rooms or use 5 tabs to force same-team seating.
     - Start the match. Both tabs should show the 🎙️ mic button; grant mic permission.
     - Speak → you should hear each other.
-24. **Voice is isolated (opposing team):** join a third tab on the opposing team → it must
+21. **Voice is isolated (opposing team):** join a third tab on the opposing team → it must
     **NOT** hear the first team's audio.
-25. **TURN/NAT path:** connect one client from a **mobile hotspot** (different NAT). If voice
+22. **TURN/NAT path:** connect one client from a **mobile hotspot** (different NAT). If voice
     still connects, TURN is doing its job.
 
 ## Phase 9 — Ongoing operations
@@ -266,8 +284,9 @@ docker compose down
 ```
 
 - **TLS renewals:** automatic (Caddy handles Let's Encrypt; certbot handles TURN cert).
-- **Backups:** enable DigitalOcean's automated Droplet backups (dashboard → your Droplet →
-  Backups, ~20% of the Droplet price). Worth it once you have real players.
+- **Backups:** OVH includes a **daily backup of the previous 24h** (check your plan's
+  inclusions). For longer retention, enable OVH's automated backups add-on in the
+  control panel. Worth it once you have real players.
 
 ---
 
@@ -275,10 +294,11 @@ docker compose down
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `https://play.*` won't load / cert error | DNS not propagated, or port 80/443 blocked | Verify A records; check `ufw status`; check DigitalOcean Cloud Firewall |
+| `https://play.*` won't load / cert error | DNS not propagated, or port 80/443 blocked | Verify A records; check `ufw status`; if you enabled the OVH network firewall, check its rules too |
 | Game loads, no 🎙️ button | App didn't get a voice token | Confirm `.env` has all three `LIVEKIT_*` vars and matches `livekit.yaml`; check `docker compose logs app` for "LiveKit" |
 | 🎙️ shows, but voice never connects | SFU unreachable, or secret mismatch | `curl http://localhost:7880` should respond; compare `key`/`secret` in `.env` vs `livekit.yaml` char-for-char |
-| Voice connects on same network, fails on mobile | TURN not working (cert/port) | Confirm `5349` and `50000-60000/udp` open in UFW **and** DigitalOcean Cloud Firewall; confirm TURN cert is valid (not self-signed) |
+| Voice connects on same network, fails on mobile | TURN not working (cert/port) | Confirm `5349` and `50000-60000/udp` open in UFW **and** the OVH network firewall (if enabled); confirm TURN cert is valid (not self-signed) |
+| Voice quality degrades / throttle under load | OVH fair-use bandwidth restriction | OVH may throttle "abnormal" traffic to 1 Mbps; a heavy voice relay can trip this. If it recurs, consider scaling up the VPS or moving LiveKit to a dedicated box. |
 | Opponents can hear each other | Should be impossible (structural isolation) | Check that each team's LiveKit room name differs: `mm_<roomId>_A` vs `mm_<roomId>_B`. If identical, the server isn't reading seat.team correctly. |
 | `docker compose up` errors on UDP range | Some Docker versions dislike 10000-port UDP ranges | Narrow `port_range_end` in livekit.yaml + compose to e.g. `50000-50100` (1 port per concurrent participant needed) |
 
@@ -301,8 +321,8 @@ Plus, in the repo root: `Dockerfile` (containerizes the zero-dep app) and `.dock
 ## Next phase (not in this pass)
 
 - **Stats & match history** — already have the DB foundation; add columns to `User` written
-  at match end. The Droplet's 4 GB RAM fits Postgres comfortably.
+  at match end. The VPS's 4 GB RAM fits Postgres comfortably.
 - **OAuth (Google/GitHub)** — layered on the existing JWT account system.
 - **Scaling** — when you outgrow one box: keep app+DB here, move LiveKit to a dedicated
-  instance (or resize the Droplet up in the DigitalOcean panel — same IP, no code change);
-  the `mm_{roomId}_{team}` topology is host-agnostic.
+  instance (or upgrade to a larger OVH VPS plan); the `mm_{roomId}_{team}` topology is
+  host-agnostic.

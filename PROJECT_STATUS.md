@@ -1,9 +1,10 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-21
+> **Last updated:** 2026-06-22
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun; `play.mindikot.com` + `voice.mindikot.com`)
-> **Target host:** DigitalOcean Droplet, Toronto (TOR1), Debian 12, 2 vCPU / 4 GB
+> **Target host:** OVHcloud VPS-1 2027 (`vps-38d48eec.vps.ovh.ca`),
+> Canada — Beauharnois (BHS), Debian 13, 2 vCores / 4 GB / 40 GB NVMe
 > **Tests:** 89 passing (rules + auth + livekit + bot + debug)
 
 > ⚠️ **AGENT GROUND RULES — read before doing anything**
@@ -159,7 +160,7 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
      (classic scripts run in document order). Caught by manual testing.
 - **Activation — secret-key gate** (zero risk to players):
   - **Local dev**: `http://localhost:3000/?debug=1` — works from loopback, no key needed.
-  - **Live**: set env var `DEBUG_KEY=<long-random-secret>` on the droplet, then
+  - **Live**: set env var `DEBUG_KEY=<long-random-secret>` on the server, then
     `https://mindikot.com/?debug=1&key=<secret>`.
   - **Normal players never receive the debug code**: the server only injects the debug
     `<script>` tags into the HTML when the gate passes (`debugAllowed(req)`, now in
@@ -179,8 +180,17 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 - **`deploy/Caddyfile`**: automatic Let's Encrypt TLS for `play.*` and `voice.*`.
 - **`deploy/livekit.yaml`**: self-hosted SFU + embedded TURN config.
 - **`deploy/README.md`**: full 10-phase runbook (domain/DNS → provision → firewall →
-  secrets → TURN cert → bring up → verify → ops), provider: DigitalOcean Toronto.
+  secrets → TURN cert → bring up → verify → ops), provider: OVHcloud (Canada BHS).
 - **`render.yaml`**: alternative Render Blueprint (updated for deps + DB + auth).
+
+> **Hosting note (history):** OVHcloud → DigitalOcean Toronto → Contabo → **back to
+> OVHcloud**. OVH was first set aside due to a slow first-boot/provisioning experience
+> (now resolved — the box is delivered and active); DigitalOcean was dropped on
+> account/billing constraints; Contabo was tried and dropped as too expensive for the
+> spec. Final choice: **OVHcloud VPS-1 2027** (`vps-38d48eec.vps.ovh.ca`), Canada —
+> Beauharnois (BHS), 2 vCores / 4 GB / 40 GB NVMe, Debian 13, automated backups on.
+> Includes OVH's free Anti-DDoS. The Docker/Caddy/LiveKit stack is host-agnostic; only
+> the provisioning runbook changed between hosts.
 
 ### ✅ Code hygiene
 - Removed dead code (`determineFirstLead`), dead CSS (`#retry-btn`, `#turn-timer`).
@@ -192,7 +202,7 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 ## 3. Architecture at a glance
 
 ```
-DigitalOcean Droplet (Toronto, Debian 12, Docker Compose)
+OVHcloud VPS-1 (Canada BHS / Beauharnois, Debian 13, Docker Compose)
 ├── caddy   (80/443, auto-TLS)  ─► play.mindikot.com  ─► app:3000
 │                                └─ voice.mindikot.com ─► livekit:7880 (WSS signaling)
 ├── app     (node server/index.js)  — game + WS + auth + LiveKit token authority
@@ -291,8 +301,9 @@ Phase 1 (auth) is done; the DB foundation is in place for these additive phases:
 
 ## 8. Known limitations / TODOs
 
-- **Not yet deployed live.** The OVH plan was abandoned (poor service); DigitalOcean Toronto
-  is the chosen host. Droplet not yet provisioned. All local testing passed.
+- **Not yet deployed live.** Hosting history: OVH → DigitalOcean Toronto → Contabo →
+  **back to OVH** (Canada BHS). VPS delivered and active (`vps-38d48eec.vps.ovh.ca`,
+  `158.69.49.43`); DNS + stack bring-up pending. All local testing passed.
 - **LiveKit voice untested end-to-end** (requires a running SFU). Token minting + client
   wiring are complete and unit-tested; the manual cross-team audio test is pending deployment.
 - **OAuth, stats, XP, friends, leaderboard** — all deferred to roadmap phases above.
