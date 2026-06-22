@@ -84,8 +84,9 @@
       </header>
 
       <!-- Captured-10s tracker: 24 chips (4 suits × 6 copies), colored by team.
-           Persistent on-screen so players can plan which 10s are still live. -->
-      <div id="tens-tracker" class="tens-tracker"></div>
+           Hidden until the first Ten is captured, so an empty placeholder
+           doesn't sit below the score bar at match start. -->
+      <div id="tens-tracker" class="tens-tracker hidden"></div>
 
       <div class="hud-controls">
         <button id="game-help-btn" class="hud-btn help hidden" title="How to Play / Rules">?</button>

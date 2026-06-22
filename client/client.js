@@ -107,6 +107,7 @@ function resetMatchState() {
   state.playedCards = [];
   state.score = { A: 0, B: 0 };
   state.tricksWon = { A: 0, B: 0 };
+  state.capturedTens = { A: [], B: [] }; // chip tracker — clear so a fresh match shows nothing captured
   state.trickNumber = 1;
   state.leadSuit = "";
   state.trumpSuit = "";
@@ -1025,12 +1026,18 @@ function renderTensTracker() {
   // doesn't matter for display (chips are identical within a team+suit), so we
   // just count how many of each suit each team took.
   const counts = {};
+  let total = 0;
   for (const suit of SUITS_ORDER) counts[suit] = { A: 0, B: 0 };
   for (const team of ["A", "B"]) {
     for (const c of (state.capturedTens[team] || [])) {
-      if (counts[c.suit]) counts[c.suit][team]++;
+      if (counts[c.suit]) { counts[c.suit][team]++; total++; }
     }
   }
+  // Don't show an empty placeholder at match start (zero 10s captured) — it
+  // would render as a hollow dark box with 24 faint dashed outlines. The
+  // tracker appears as soon as the first Ten is captured.
+  if (total === 0) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+  wrap.classList.remove("hidden");
   let html = "";
   for (const suit of SUITS_ORDER) {
     const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
