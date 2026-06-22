@@ -2,10 +2,12 @@
 
 > **Last updated:** 2026-06-22
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
-> **Domain:** `mindikot.com` (registered at Porkbun; `play.mindikot.com` + `voice.mindikot.com`)
-> **Target host:** OVHcloud VPS-1 2027 (`vps-38d48eec.vps.ovh.ca`),
-> Canada — Beauharnois (BHS), Debian 13, 2 vCores / 4 GB / 40 GB NVMe
-> **Tests:** 89 passing (rules + auth + livekit + bot + debug)
+> **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
+> `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
+> **Host:** OVHcloud VPS-1 2027 (`vps-38d48eec.vps.ovh.ca`), Canada — Beauharnois (BHS),
+> Debian 13, 2 vCores / 4 GB / 40 GB NVMe — **DEPLOYED & LIVE at https://play.mindikot.com**
+> **Tests:** 50+ passing (rules + auth + livekit + bot + match + debug); match suite now <100ms
+> (was ~20s+) via setImmediate-based fastTimers + waitFor polling.
 
 > ⚠️ **AGENT GROUND RULES — read before doing anything**
 > - **Never `git push` without explicit user permission.** Committing locally is fine,
@@ -58,14 +60,37 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 - **Web client** (`client/`): vanilla HTML/CSS/JS, 10-seat perspective-rotated table,
   playable-card highlighting, kitty flip animation, team text chat, mobile-responsive.
 
-### ✅ Team voice chat — LiveKit (match-only)
-- **Team-scoped audio**: one LiveKit room per team per game (`mm_{roomId}_{team}`). Opponents
-  land in a different room → structural isolation, can't subscribe to your audio.
-- **Zero-dependency token minting** (`server/livekit.js`): hand-rolled HS256 LiveKit JWT via
-  `node:crypto` (no `livekit-server-sdk`). Matches the project's hand-rolled ethos.
-- **Client** (`client/client.js`): connects on match start, tears down at match end; mic
-  toggle; per-seat speaking/muted indicators. Fail-soft: if SFU unconfigured, silent.
-- **Self-hosted SFU** (chosen): documented in deploy runbook; runs as a Docker container.
+### ✅ Voice chat — LiveKit (all-player, opt-in, lobby + match)
+- **All-player audio**: one LiveKit room per match (`mm_{roomId}`) — all 10 players
+  (both teams) share one room so everyone can hear everyone ("table talk" style).
+  Previously team-scoped (`mm_{roomId}_{team}`); reopened to everyone by design.
+- **Opt-in (off by default)**: voice does NOT auto-connect. The user must click the
+  "🎙️+" (Join Voice) button, which sets `state.voiceWanted` (sticky across matches
+  within a session) and triggers the browser's mic-permission prompt. Players who
+  don't want voice are never prompted. Right-click the mic button leaves voice
+  entirely (clears `voiceWanted`). See `offerVoice()` / `onVoiceButtonClick()`.
+- **Lobby voice**: the server mints a per-seat voice token during LOBBY
+  (`broadcastLobby()` sends `lobbyVoice` to each human), so players can talk
+  *before* the match starts. A `#lobby-voice-toggle` button mirrors the in-game
+  mic control. `voiceToggle` relay allows LOBBY (not just PLAYING).
+- **Zero-dependency token minting** (`server/livekit.js`): hand-rolled HS256 LiveKit
+  JWT via `node:crypto` (no `livekit-server-sdk`).
+- **Self-hosted SFU**: documented in deploy runbook; runs as a Docker container.
+  Vendored LiveKit browser SDK (`client/livekit-client.umd.min.js`, 364 KB) — no
+  CDN dependency. The UMD global is `LivekitClient` (NOT `LiveKit`/`Livekit`;
+  the old code looked for the wrong name → voice silently broken until fixed).
+
+### ✅ Captured-10s chip tracker
+- **Persistent on-screen display** of which 10s have been captured, by which team.
+  A 4-row grid (one row per suit: ♠/♥/♦/♣) × 6 chips per row (6 copies of the 10
+  per suit in the 192-card mega deck = 24 total Tens). Each chip is colored by the
+  team that captured that copy (blue = Team A, red = Team B); empty/dashed = uncaptured.
+- **Server is source of truth**: `this.capturedTens = { A: [{suit}], B: [{suit}] }`
+  populated in `resolveTrick()` (both played cards and kitty reveal), sent in
+  `init` (reconnect-safe) and `trickWon` (live). So a mid-match reconnect shows
+  the correct history immediately.
+- **Client** (`renderTensTracker()`): rebuilds the grid on every HUD render. Sits
+  in a compact strip just below the score bar.
 
 ### ✅ Accounts — email/password (Phase 1)
 - **Signup/login/logout** with persistent display name + cross-device reconnect.
@@ -177,7 +202,8 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 - **`Dockerfile`**: containerizes the app; runs `npm ci` + `prisma generate` + `migrate deploy`.
 - **`deploy/docker-compose.yml`**: 4 services — `app` + `db` (postgres:16) + `livekit` SFU +
   `caddy` reverse proxy, all on one box.
-- **`deploy/Caddyfile`**: automatic Let's Encrypt TLS for `play.*` and `voice.*`.
+- **`deploy/Caddyfile`**: automatic Let's Encrypt TLS for `play.*`, `voice.*`,
+  and the apex `mindikot.com` (which 301-redirects to `play.*` for one canonical URL).
 - **`deploy/livekit.yaml`**: self-hosted SFU + embedded TURN config.
 - **`deploy/README.md`**: full 10-phase runbook (domain/DNS → provision → firewall →
   secrets → TURN cert → bring up → verify → ops), provider: OVHcloud (Canada BHS).
@@ -223,14 +249,16 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 
 | Branch | Purpose | Status |
 |---|---|---|
-| `main` | Original baseline (initial commit only) | Untouched |
-| `live` | Production mirror (= `main` currently) | Clean baseline |
-| `staging` | Active development — **all features above** | 11 commits ahead of `main` |
+| `main` | Original baseline (initial commit only) | Untouched since first commit |
+| `live` | **Production — deployed on OVH** | In sync with `staging` (all features shipped here) |
+| `staging` | Active development | In sync with `live` |
 
-**Promotion flow:** develop on `staging` → test → merge `staging` → `live` → deploy.
+**Promotion flow:** develop on `staging` → test (`npm test`) → merge `staging` → `live` → push → redeploy:
 ```bash
 git checkout live && git merge --ff-only staging && git push origin live
+# then on the server: cd ~/mega-mindikot && git pull && cd deploy && docker compose up -d --build app
 ```
+**Server clone** uses `-b live`: `git clone -b live https://github.com/AlphaStarX/mega-mindikot.git`.
 
 ---
 
@@ -250,35 +278,44 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ---
 
-## 6. Commit history (staging)
+## 6. Commit history (recent — staging = live)
 
 ```
-68eda4d Initial commit: Mega Mendikot 5v5
-992f1c8 Add team-scoped LiveKit voice chat (match-only)
-4802d47 Add OVHcloud deployment stack (Docker + Caddy + LiveKit SFU)
-5a043a2 Configure deployment for mindikot.com domain
-7501ec8 Save full deployment guide to repo with Phase 0 (domain/DNS)
-015ab78 Add account signup/login with Postgres + Prisma (Phase 1)
-3808351 Add turn-timer countdown ring around active player's avatar
-be8e34f Switch deployment docs from OVH to DigitalOcean (Toronto)
-84bbe0d Casino 'Monte Carlo' theme + in-match Leave button + chat resize
-cae2c14 Fix auth transition + duplicate-socket host bug; reset quick-match on leave
-89ff16c Rename brand 'Mega Mendikot' -> 'Mega Mindikot' (domain: mindikot.com)
-1a0f709 Add interactive tutorial + HUD/UI polish (chips, thinking dots, z-index)
-f900cd6 Polish HUD header alignment, chip sizing, Trick: label, control positioning
-231c5c7 Add bot AI unit tests (13 cases) covering each heuristic
-87b6931 docs: record correct commit hash in history
-d6544b5 docs: add agent ground rule — no git push without user permission
-a430fcd Change 12-12 deadlock rule: most tricks won (was: last trick)
-3b3e9d4 Test the debug/logging panel and fix two load-time bugs
+d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README, faster tests
+97ff842 feat: all-player voice, relocate mic button, captured-10s chip tracker
+b8a06d4 fix(voice): vendor LiveKit SDK + correct UMD global name (LivekitClient)
+f60ee44 docs: switch deployment target from Contabo to OVHcloud (Canada BHS, Debian 13)
+0debaff docs: update PROJECT_STATUS — ceremony commit history + deadlock/stale-state notes
 ddd6f6c Add visible lead-selection ceremony + deadlock UI + stale-state fix
+3b3e9d4 Test the debug/logging panel and fix two load-time bugs
+a430fcd Change 12-12 deadlock rule: most tricks won (was: last trick)
 ```
+(Full earlier history in `git log`; initial commit was `68eda4d`.)
 
 ---
 
-## 7. Roadmap — what's next (account system phases)
+## 7. Roadmap — what's next
 
-Phase 1 (auth) is done; the DB foundation is in place for these additive phases:
+### 🔜 Immediate — deferred from the last batch (Task 7)
+These were scoped and planned but deferred to a focused session (largest/riskiest change —
+touches the seat/team model and the room lifecycle):
+
+- **Team selection (pick a seat)**: today teams are fixed by seat index (`seat % 2`,
+  `teamForSeat()` in `shared/rules.js`, assigned in `makeSeats()`, never reassigned).
+  Planned: a clickable 10-seat table map in the lobby; `chooseSeat(seatIdx)` server
+  method that flips a free bot seat to human (rejects if team has 5 humans). Changes
+  `addHuman`/`nextOpenSeat` signatures + a new `chooseSeat` message handler.
+- **Stay-in-lobby after match end ("Play Again")**: today `endMatch()` sets FINISHED
+  and the cleanup interval deletes the room in 10s; the client's `#rematch-btn` closes
+  the socket and returns to the main menu. Planned: a `resetToLobby()` method (zeros
+  score/hands/capturedTens/etc., sets LOBBY, keeps humans seated), a `playAgain` host
+  message, and the client's `#rematch-btn` sends `playAgain` instead of closing the WS.
+- **Party cohesion**: falls out of the above for free (same room code, same players,
+  voice persists across matches). At match-end, drop the `voiceEnd` broadcast so voice
+  carries into the post-match lobby.
+
+### Account-system phases (DB foundation is in place)
+Phase 1 (auth) is done; these are additive:
 
 | Phase | Feature | Effort |
 |---|---|---|
@@ -289,28 +326,38 @@ Phase 1 (auth) is done; the DB foundation is in place for these additive phases:
 | **6** | Friends list (add by ID, invite to room) | Medium-large |
 | **7** | Google/GitHub OAuth | Medium |
 
-**Standalone ideas:** doc/version reconciliation
-(README "15s"→20s timer, version drift), spectator mode, ranked seasons.
+### Small standalone TODOs
+- **RULEBOOK.md 15s → 20s timer correction**: the live game uses a 20s turn timer
+  (`TURN_SECONDS`), but RULEBOOK.md still says 15s in §7.6/§8.4/§11.5/§10.11.
+  README was written with the correct 20s; the RULEBOOK itself needs the fix.
+- **Speaking-activity indicators (VAD)**: the per-seat mic glyphs were removed (clutter);
+  if "who is talking" is wanted, it needs LiveKit speaking events — a separate feature.
+- **Mobile/touch polish** for the lobby seat-map UI (ships with Task 7).
 
-> ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases). Was previously
-> listed here; it's done.
-
-> ✅ **Interactive tutorial** — shipped (see §2). Was previously listed here; it's done.
+> ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases).
+> ✅ **Interactive tutorial** — shipped (see §2).
+> ✅ **Captured-10s tracker** — shipped (see §2).
+> ✅ **Opt-in / all-player / lobby voice** — shipped (see §2).
 
 ---
 
 ## 8. Known limitations / TODOs
 
-- **Not yet deployed live.** Hosting history: OVH → DigitalOcean Toronto → Contabo →
-  **back to OVH** (Canada BHS). VPS delivered and active (`vps-38d48eec.vps.ovh.ca`,
-  `158.69.49.43`); DNS + stack bring-up pending. All local testing passed.
-- **LiveKit voice untested end-to-end** (requires a running SFU). Token minting + client
-  wiring are complete and unit-tested; the manual cross-team audio test is pending deployment.
-- **OAuth, stats, XP, friends, leaderboard** — all deferred to roadmap phases above.
-- **Match tests are timing-fragile** — the headless all-bot test uses `realSleep(3000)` near
-  the edge of completion time; occasionally flakes. Pre-existing, unrelated to new features.
-- **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated users
-  use `localStorage` tokens so they persist — but guests don't get cross-device reconnect.
+- **DEPLOYED & LIVE** at `https://play.mindikot.com` since 2026-06-22. The full
+  stack (app + Postgres + LiveKit SFU + Caddy) is running on the OVH VPS
+  (`158.69.49.43`). Game, accounts, voice all functional. Apex `mindikot.com`
+  redirects to `play.*`.
+- **Apex cert issuance**: on the very first request to `https://mindikot.com`,
+  Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
+  transient "can't provide a secure connection" until it's issued. One-time.
+- **Task 7 deferred** (team selection + party/lobby flow) — see §7. This is the
+  next major work item.
+- **OAuth, stats, XP, friends, leaderboard** — all deferred to roadmap phases.
+- **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
+  users use `localStorage` tokens so they persist — but guests don't get cross-device
+  reconnect.
+- **`staging` push to GitHub** hit a transient network timeout on the last batch;
+  the identical commit is already on `live`, so no divergence risk. Retries on next push.
 
 ---
 
@@ -318,7 +365,7 @@ Phase 1 (auth) is done; the DB foundation is in place for these additive phases:
 
 ```bash
 npm install                              # installs Prisma + pg (the only deps)
-npm test                                 # 26 tests (rules + auth + livekit)
+npm test                                 # 50+ tests; match suite is <100ms (setImmediate fastTimers)
 npm start                                # guest-only mode (no DB)
 
 # With accounts (needs Docker):
@@ -329,4 +376,7 @@ DATABASE_URL="postgresql://mm:test@localhost:5432/mendikot" JWT_SECRET="any-secr
 # → http://localhost:3000 (will show "Accounts: enabled")
 ```
 
-See `deploy/README.md` for the full production deployment runbook.
+See `deploy/README.md` for the full production deployment runbook (OVHcloud).
+
+> **Note on `staging` vs `live`:** both branches are kept in sync. Develop on
+> `staging`, then fast-forward merge to `live` and push. The server clones `-b live`.
