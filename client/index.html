@@ -135,15 +135,16 @@
       </div>
     </section>
   </div>
-  <!-- LiveKit browser SDK (team voice, §6.1). Loaded via CDN as a UMD bundle
-       and exposed as window.livekit. This is the ONLY client-side dependency;
-       the server remains zero-dependency. On failure the SDK simply isn't there
-       and the client degrades to silent (game still plays). -->
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.5.9/dist/livekit-client.umd.min.js"
-          onerror="window.livekit=null;"></script>
+  <!-- LiveKit browser SDK (team voice, §6.1). Vendored (self-hosted) so voice
+       does not depend on a third-party CDN (which can be geo-blocked or
+       unreachable). This is the ONLY client-side dependency; the server remains
+       zero-dependency. The UMD bundle exposes the global as `LivekitClient`. -->
+  <script src="/livekit-client.umd.min.js"
+          onerror="window.__livekitLoadFailed=true;"></script>
   <script>
-    // The UMD global name has varied across versions (LiveKit / Livekit); accept either.
-    window.livekit = window.LiveKit || window.Livekit || null;
+    // The UMD global name for livekit-client 2.x is `LivekitClient`; earlier
+    // versions used `LiveKit` / `Livekit`. Accept any of them defensively.
+    window.livekit = window.LivekitClient || window.LiveKit || window.Livekit || null;
   </script>
   <script src="/tutorial.js"></script>
   <script src="/client.js"></script>
