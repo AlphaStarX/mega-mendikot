@@ -275,9 +275,11 @@ function handleMessage(ws, msg) {
     case "voiceToggle":
       // Mute/unmute is client-local (the publishing client mutes its own mic
       // track); the server only relays the player-facing HUD state so others
-      // see who's muted. Voice is all-player, so broadcast to everyone.
+      // see who's muted. Voice is all-player, so broadcast to everyone. Allowed
+      // in both PLAYING and LOBBY so pre-game / post-match lobby voice works.
       // Bot/spectator toggles are ignored.
-      if (ws.room && ws.seat !== null && ws.room.matchState === "PLAYING") {
+      if (ws.room && ws.seat !== null &&
+          (ws.room.matchState === "PLAYING" || ws.room.matchState === "LOBBY")) {
         ws.room.broadcast({
           t: "voiceState",
           seat: ws.seat,

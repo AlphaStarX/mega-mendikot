@@ -184,6 +184,16 @@ body::after {
 .lobby-seat.team-a .ls-dot { background: var(--teamA); }
 .lobby-seat.team-b .ls-dot { background: var(--teamB); }
 .lobby-actions { margin: 10px 0; min-height: 30px; }
+/* Lobby voice toggle — gold pill matching the in-game control, sits in the
+   lobby panel above Leave. JS toggles `hidden` based on voice availability. */
+.lobby-voice-btn {
+  background: rgba(0,0,0,.45); color: var(--gold);
+  border: 1px solid rgba(245,197,66,.45); border-radius: 999px;
+  padding: 8px 14px; font-size: 14px; font-weight: 700; cursor: pointer;
+  margin: 6px 0 4px;
+}
+.lobby-voice-btn:hover { background: rgba(245,197,66,.2); }
+.lobby-voice-btn[aria-pressed="true"] { opacity: .7; border-style: dashed; }
 .link-btn { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; margin-top: 8px; text-decoration: underline; }
 
 /* ---------- Game screen ---------- */
@@ -288,7 +298,7 @@ body::after {
   font-weight: 700; font-size: 18px; color: #fff;
   border: 3px solid transparent;
   background: #2a2a2a;
-  position: relative; /* anchors the .voice-ind badge */
+  position: relative; /* anchors the turn-timer ring */
 }
 .seat.team-a .avatar { border-color: var(--teamA); }
 .seat.team-b .avatar { border-color: var(--teamB); }
@@ -564,14 +574,6 @@ body::after {
 }
 .hud-btn.voice[aria-pressed="true"] { opacity: .7; border-style: dashed; }
 
-/* Per-seat teammate voice indicator, rendered inside the avatar. */
-.seat .voice-ind {
-  position: absolute; right: -4px; bottom: -4px;
-  font-size: 12px; line-height: 1; background: #11181a; border-radius: 50%;
-  padding: 1px 2px; border: 1px solid rgba(255,255,255,.25);
-}
-.seat .voice-ind.on { border-color: var(--gold); }
-.seat .voice-ind.muted { opacity: .6; }
 
 @media (max-width: 600px) {
   .card { width: 52px; height: 72px; margin-left: -20px; }

@@ -521,6 +521,15 @@ export class GameRoom {
       })),
     };
     this.broadcast(lobby);
+    // Push a per-seat voice token to each connected human so they can opt into
+    // lobby voice. Tokens are per-identity, so this can't ride on the shared
+    // lobbyUpdate payload. No-op when voice isn't configured or the seat is a bot.
+    if (voiceConfigured()) {
+      for (const seatIdx in this.sockets) {
+        const voice = this.voiceTokenForSeat(Number(seatIdx));
+        if (voice) safeSend(this.sockets[seatIdx], { t: "lobbyVoice", ...voice });
+      }
+    }
   }
 
   // --- network helpers ---

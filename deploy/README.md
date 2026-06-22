@@ -55,15 +55,18 @@ free WHOIS privacy, free DNS. `mindikot.com` is **available** as of this writing
 there's usually nothing to change. Verify in Domain Management → `mindikot.com` →
 **Nameservers** that it says "Use Porkbun nameservers".
 
-**Add two A records** (Domain Management → `mindikot.com` → **DNS** → "Add Record"):
+**Add three A records** (Domain Management → `mindikot.com` → **DNS** → "Add Record"):
 
 | Type | Host | Answer | TTL |
 |---|---|---|---|
 | `A` | `play` | `<YOUR_VPS_IP>` | 600 |
 | `A` | `voice` | `<YOUR_VPS_IP>` | 600 |
+| `A` | `@` | `<YOUR_VPS_IP>` | 600 |
 
-Delete any default `@`/`www` placeholder records if you like (they aren't needed for
-the game). Both `play.*` and `voice.*` point at the same single VPS.
+The `@` record points the bare/apex domain (`mindikot.com`) at the VPS; Caddy
+redirects it to `https://play.mindikot.com`. (Optional: add a matching `www`
+record and a `www.mindikot.com` redirect block if you want `www` to work too.)
+Both `play.*` and `voice.*` point at the same single VPS.
 
 **Verify propagation** from your local machine (wait 2–10 min):
 ```bash

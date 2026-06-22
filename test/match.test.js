@@ -6,25 +6,51 @@ import { GameRoom } from "../server/game-room.js";
 import { TOTAL_TENS, WIN_TENS } from "../shared/rules.js";
 
 const realSetTimeout = global.setTimeout;
+const realSetInterval = global.setInterval;
 function fastTimers() {
   const orig = {
-    setInterval: global.setInterval, clearInterval: global.clearInterval,
-    setTimeout: global.setTimeout, clearTimeout: global.clearTimeout,
+    setInterval: realSetInterval, clearInterval: global.clearInterval,
+    setTimeout: realSetTimeout, clearTimeout: global.clearTimeout,
   };
-  global.setInterval = (fn, ms) => orig.setInterval(fn, Math.min(ms, 1));
-  global.setTimeout = (fn, ms) => orig.setTimeout(fn, Math.min(ms, 1));
+  // Compress all timers to fire in the next event-loop turn via setImmediate,
+  // which has no 1ms minimum clamp (unlike setTimeout(fn, 0)) and batches all
+  // due callbacks in a single check phase. This makes a staged 18-trick bot
+  // match resolve in tens of ms instead of several real seconds.
+  global.setInterval = (fn) => {
+    const h = { _on: true };
+    const tick = () => { if (!h._on) return; try { fn(); } finally { setImmediate(tick); } };
+    setImmediate(tick);
+    return h;
+  };
+  global.clearInterval = (h) => { if (h) h._on = false; };
+  global.setTimeout = (fn) => { const h = setImmediate(fn); return { _imm: h }; };
+  global.clearTimeout = (h) => { if (h && h._imm) clearImmediate(h._imm); };
   return () => Object.assign(global, orig);
 }
 function realSleep(ms) { return new Promise((r) => realSetTimeout(r, ms)); }
 function fakeWs() { return { readyState: 1, send: () => {}, sessionId: "f" }; }
+
+// Poll for a condition instead of a fixed sleep. With setImmediate-based
+// fastTimers, the bot/timer callbacks fire in the next event-loop turn, so this
+// resolves almost immediately once the condition becomes true. The safety cap
+// prevents a hang on regression.
+async function waitFor(fn, { timeout = 5000, interval = 5, msg = "waitFor" } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    if (fn()) return;
+    await realSleep(interval);
+  }
+  throw new Error(`${msg} timed out after ${timeout}ms`);
+}
 
 test("full all-bot match completes with a valid winner", async () => {
   const restore = fastTimers();
   const room = new GameRoom("TESTRM");
   // No humans added — all 10 seats stay bots.
   room.start();
-  // Ceremony + bot match run via staged timers; wait for completion.
-  await realSleep(5000);
+  // Ceremony + bot match run via staged (compressed) timers; poll for completion
+  // instead of fixed-sleeping. Resolves in a few ms in fastTimers mode.
+  await waitFor(() => room.matchState === "FINISHED", { msg: "match 1 to finish" });
   assert.equal(room.matchState, "FINISHED", "match reached FINISHED");
   const total = room.score.A + room.score.B;
   assert.ok(total <= TOTAL_TENS, `captured tens ${total} must not exceed ${TOTAL_TENS}`);
@@ -40,7 +66,7 @@ test("match consumes exactly the tricks it played; no cards vanish", async () =>
   room.start();
   // The lead-selection ceremony runs first (staged timers); the real 192-card
   // hand isn't dealt until it resolves. Wait for FINISHED, then verify.
-  await realSleep(5000);
+  await waitFor(() => room.matchState === "FINISHED", { msg: "match 2 to finish" });
   assert.equal(room.matchState, "FINISHED");
   // After a full match, hands are nearly empty; verify no cards vanished: the
   // cards still in hands + 10 per trick played must equal the original 180 dealt.
@@ -58,8 +84,9 @@ test("lead-selection ceremony sets a valid leadSeat (>= 0, unique winner)", asyn
   room.start();
   // Ceremony runs via staged timers; the real deal + leadSeat assignment happen
   // once it resolves. Match goes all-bot so it completes on its own.
-  await realSleep(3500);
+  await waitFor(() => room.leadSeat >= 0, { msg: "leadSeat assigned" });
   assert.ok(room.leadSeat >= 0 && room.leadSeat < 10, `leadSeat valid: ${room.leadSeat}`);
+  await waitFor(() => room.matchState === "FINISHED", { msg: "ceremony match to finish" });
   assert.equal(room.matchState, "FINISHED", "match still completes after ceremony");
   restore();
 });
@@ -119,13 +146,13 @@ test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async
   const ws = capturingWs("u1");
   room.addHuman(ws, "u1", "Ann");
   room.start();
-  // Ceremony runs first; init is sent only after it resolves. Await the timers.
-  await realSleep(200);
+  // Ceremony runs first; init is sent only after it resolves. Poll for init.
+  await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "init sent" });
   const init = ws._sent.find((m) => m.t === "init");
   assert.ok(init, "human received init");
   assert.equal(init.voiceToken, undefined, "no voice token when unconfigured");
   assert.equal(init.voiceRoom, undefined);
-  await realSleep(2000);
+  await waitFor(() => room.matchState === "FINISHED", { msg: "unconfigured match to finish" });
   const ended = ws._sent.some((m) => m.t === "voiceEnd");
   assert.equal(ended, false, "no voiceEnd emitted when voice was never configured");
   for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -147,15 +174,15 @@ test("with voice configured, connected humans get all-player tokens on start and
   // Bots never receive tokens; only the human does.
   room.start();
   // The lead-selection ceremony runs first; the init (with voice tokens) is sent
-  // only once it resolves and the real hand deals. Let the staged timers fire.
-  await realSleep(200);
+  // only once it resolves and the real hand deals. Poll for it.
+  await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "voice init sent" });
   const init = ws._sent.find((m) => m.t === "init");
   assert.ok(init, "human received init");
   assert.equal(init.voiceUrl, "wss://lk.test");
   assert.equal(init.voiceRoom, "mm_V2", "token is for this match's all-player room");
   assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part jwt");
 
-  await realSleep(8000);
+  await waitFor(() => room.matchState === "FINISHED", { msg: "voice match to finish" });
   assert.equal(room.matchState, "FINISHED", "match ended");
   assert.ok(ws._sent.some((m) => m.t === "voiceEnd"), "voiceEnd broadcast at match end");
 
@@ -175,8 +202,8 @@ test("opposing-team humans share the same voice room (all-player voice)", async 
   const sA = room.addHuman(wsA, "uA", "Ann");
   const sB = room.addHuman(wsB, "uB", "Ben");
   room.start();
-  // Ceremony runs first; init is sent only after it resolves. Await the timers.
-  await realSleep(200);
+  // Ceremony runs first; init is sent only after it resolves. Poll for both inits.
+  await waitFor(() => wsA._sent.some((m) => m.t === "init") && wsB._sent.some((m) => m.t === "init"), { msg: "both inits sent" });
   const initA = wsA._sent.find((m) => m.t === "init");
   const initB = wsB._sent.find((m) => m.t === "init");
   assert.equal(initA.voiceRoom, initB.voiceRoom, "all players share one voice room");

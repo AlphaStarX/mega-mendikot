@@ -73,10 +73,16 @@ const state = {
   leadSelectWinner: null,    // seat that won the ceremony (once decided)
   leadSelectActiveSeats: null, // seats dealt a card THIS round (for staggered reveal)
   chatLog: [],         // ephemeral chat messages for the current match
-  // --- LiveKit team voice (match-only, §6.1) ---
+  // --- LiveKit voice (opt-in) ---
+  // Voice is OFF by default. The user must click "Join Voice" to opt in
+  // (which also triggers the browser's mic-permission prompt). Until they do,
+  // no mic access is requested and no audio flows.
   voiceRoom: null,     // livekit.Room instance once connected
   voiceConnected: false,
   voiceMuted: false,
+  voiceWanted: false,    // user has opted in this session (sticky across matches)
+  voiceAvailable: false, // a token is available right now
+  pendingVoice: null,    // { voiceUrl, voiceRoom, voiceToken } from the server
   voiceMutedSeats: {}, // seat -> bool (per-player mute indicators)
   // --- account auth (Phase 1) ---
   userId: null,
@@ -216,6 +222,7 @@ function handle(m) {
     case "matchEnd": onMatchEnd(m); break;
     case "chat": onChat(m); break;
     case "voiceState": onVoiceState(m); break;
+    case "lobbyVoice": offerVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken }); break;
     case "voiceEnd": disconnectVoice(); break;
     case "error": showMsg(m.message); break;
   }
@@ -412,8 +419,9 @@ function onInit(m) {
   renderHud();
   renderPlayedCards();
   renderKitty();
-  // Match-only voice: connect if the server minted a team-scoped token.
-  connectVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken });
+  // Match-only voice: offer the token; the client connects only if the user
+  // has opted in this session (voiceWanted). See offerVoice().
+  offerVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken });
 }
 
 function onTrickStart(m) {
@@ -500,12 +508,31 @@ function sendChat() {
   input.value = "";
 }
 
-// ---------- team voice (LiveKit) ----------
-// The LiveKit browser SDK is loaded via CDN in index.html (the server stays
-// zero-dependency). Voice is match-only: the server sends a voiceToken on init
-// once the room is in PLAYING. A missing token, a failed mic permission, or an
-// unreachable SFU must NEVER break the game — every path degrades to silent.
+// ---------- voice (LiveKit, opt-in) ----------
+// The LiveKit browser SDK is vendored (client/livekit-client.umd.min.js); the
+// server stays zero-dependency. Voice is OPT-IN: the server sends a voiceToken,
+// but the client does NOT auto-connect. The user must click "Join Voice", which
+// records voiceWanted=true (sticky for the session) and triggers connectVoice.
+// A failed mic permission, a missing token, or an unreachable SFU must NEVER
+// break the game — every path degrades to silent.
 const LIVEKIT = typeof window !== "undefined" ? window.livekit : undefined;
+
+// Store the latest token from the server and connect only if the user has
+// already opted in for this session (e.g. they joined voice in a prior match
+// and are now in a new match/lobby). This keeps voice opt-in but sticky.
+function offerVoice(voice) {
+  if (!voice || !voice.voiceToken) {
+    state.pendingVoice = null;
+    state.voiceAvailable = false;
+  } else {
+    state.pendingVoice = voice;
+    state.voiceAvailable = true;
+  }
+  if (state.voiceWanted && state.voiceAvailable && !state.voiceConnected) {
+    connectVoice(state.pendingVoice);
+  }
+  updateVoiceButton();
+}
 
 async function connectVoice(voice) {
   if (!voice || !voice.voiceToken) return;       // voice not configured server-side
@@ -552,6 +579,14 @@ async function disconnectVoice() {
   }
 }
 
+// Explicit opt-out: the user leaves voice AND stops auto-joining in future
+// matches/lobbies. They can re-join any time via the Join Voice button.
+async function leaveVoice() {
+  state.voiceWanted = false;
+  await disconnectVoice();
+  showMsg("Left voice.");
+}
+
 async function toggleVoiceMute() {
   if (!state.voiceRoom) return;
   const next = !state.voiceMuted;
@@ -570,17 +605,42 @@ function onVoiceState(m) {
   renderSeats();
 }
 
-function updateVoiceButton() {
-  const btn = $("voice-toggle");
-  if (!btn) return;
-  if (!state.voiceConnected) {
-    btn.classList.add("hidden");
-    btn.setAttribute("aria-pressed", "false");
-    return;
+// User clicked the voice button. Behavior depends on state:
+//   - Not connected, token available → join voice (opt in).
+//   - Connected → toggle mute.
+// (Right-click / long-press → leave voice entirely; see the contextmenu handler.)
+function onVoiceButtonClick() {
+  if (state.voiceConnected) {
+    toggleVoiceMute();
+  } else if (state.voiceAvailable) {
+    state.voiceWanted = true;
+    connectVoice(state.pendingVoice);
   }
-  btn.classList.remove("hidden");
-  btn.textContent = state.voiceMuted ? "🔇" : "🎙️";
-  btn.setAttribute("aria-pressed", String(state.voiceMuted));
+}
+
+function updateVoiceButton() {
+  // Update BOTH the in-game and the lobby voice buttons so the mic control
+  // reflects the same state wherever the player is.
+  const btns = ["voice-toggle", "lobby-voice-toggle"]
+    .map((id) => $(id))
+    .filter((b) => b);
+  if (btns.length === 0) return;
+  for (const btn of btns) {
+    if (state.voiceConnected) {
+      btn.classList.remove("hidden");
+      btn.textContent = state.voiceMuted ? "🔇" : "🎙️";
+      btn.setAttribute("aria-pressed", String(state.voiceMuted));
+      btn.title = "Click to mute/unmute · Right-click to leave voice";
+    } else if (state.voiceAvailable) {
+      btn.classList.remove("hidden");
+      btn.textContent = "🎙️+";
+      btn.setAttribute("aria-pressed", "false");
+      btn.title = "Join voice chat";
+    } else {
+      btn.classList.add("hidden");
+      btn.setAttribute("aria-pressed", "false");
+    }
+  }
 }
 
 function showChatPanel(show) {
@@ -717,17 +777,10 @@ function renderSeats() {
     el.style.top = y + "%";
     const initials = (s.name || "?").slice(0, 2).toUpperCase();
     const thinking = s.seat === state.thinkingSeat;
-    // Voice indicator: for every connected human (voice is all-player, so
-    // everyone shares one room and everyone's mute state is broadcast).
-    // "You" reflects your own mic state; others reflect the voiceState broadcasts.
-    let voiceGlyph = "";
-    const isPlayer = !s.isBot;
-    if (isPlayer && state.voiceConnected) {
-      const muted = s.seat === state.you ? state.voiceMuted : !!state.voiceMutedSeats[s.seat];
-      voiceGlyph = muted
-        ? '<span class="voice-ind muted" title="Muted">🔇</span>'
-        : '<span class="voice-ind on" title="Mic on">🎙️</span>';
-    }
+    // Per-seat voice indicator intentionally removed — the top-right mic toggle
+    // is the single source of truth, and glyphs on all 10 seats added clutter
+    // (especially with all-player voice). The mute-state broadcast machinery
+    // (voiceState/voiceToggle) is retained for potential future speaking-active use.
     // Turn-timer ring: only on the active seat. The progress circle is driven by
     // state.turnTime via renderTimerRing() (updated each second by the countdown).
     const timerRing = s.seat === state.activeSeat ? timerRingSvg(s.seat) : "";
@@ -770,7 +823,7 @@ function renderSeats() {
       }
     }
     el.innerHTML = `
-      <div class="avatar">${initials}${voiceGlyph}${timerRing}</div>
+      <div class="avatar">${initials}${timerRing}</div>
       ${leadCardHtml}
       <div class="name">${s.seat === state.you ? "You" : s.name}</div>
       ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
@@ -1102,7 +1155,18 @@ $("rematch-btn").addEventListener("click", () => {
   showScreen("join-screen");
 });
 // Voice mic toggle (match-only; button is hidden until voice connects).
-$("voice-toggle").addEventListener("click", toggleVoiceMute);
+$("voice-toggle").addEventListener("click", onVoiceButtonClick);
+// Right-click (or long-press on mobile via contextmenu) leaves voice entirely.
+$("voice-toggle").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (state.voiceConnected) leaveVoice();
+});
+// Lobby voice button shares the same behavior as the in-game one.
+$("lobby-voice-toggle").addEventListener("click", onVoiceButtonClick);
+$("lobby-voice-toggle").addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (state.voiceConnected) leaveVoice();
+});
 
 // --- Tutorial / How to Play (window.Tutorial is defined by tutorial.js) ---
 $("howto-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("learn"));

@@ -41,6 +41,15 @@
 	}
 }
 
+# --- Apex domain redirect ---
+# Visitors who type the bare domain (mindikot.com) are redirected to the
+# canonical play subdomain. This keeps one source-of-truth URL and avoids
+# cookie/WebSocket-origin mismatch. Requires an `@` A record pointing at this
+# VPS; Caddy auto-issues a separate cert for the apex on first request.
+mindikot.com {
+	redir https://play.mindikot.com{uri} permanent
+}
+
 # Catch-all: redirect bare HTTP on port 80 to HTTPS. Caddy does this automatically
 # for defined sites, but an explicit block ensures the ACME HTTP-01 challenge path
 # keeps working even if a hostname isn't matched above.
