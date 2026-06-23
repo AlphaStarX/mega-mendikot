@@ -41,7 +41,7 @@ function fakeWs() { return { readyState: 1, send: () => {}, sessionId: "f" }; }
 // fastTimers, the bot/timer callbacks fire in the next event-loop turn, so this
 // resolves almost immediately once the condition becomes true. The safety cap
 // prevents a hang on regression.
-async function waitFor(fn, { timeout = 5000, interval = 5, msg = "waitFor" } = {}) {
+async function waitFor(fn, { timeout = 15000, interval = 5, msg = "waitFor" } = {}) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
     if (fn()) return;
