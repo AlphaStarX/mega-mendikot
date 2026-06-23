@@ -24,6 +24,24 @@
 	}
 }
 
+# --- Staging preview (the `staging` branch) ---
+# Same app, but a separate checkout + throwaway database, for pre-merge QA.
+# Reached via staging.<domain>; Caddy auto-issues a separate cert on first
+# request (requires a `staging` A record pointing here — see deploy/README.md).
+# Fully isolated from the play block above: routes to staging-app:3000, so a
+# staging deploy or crash can never reach prod's app:3000.
+{$STAGING_DOMAIN} {
+	encode gzip zstd
+
+	reverse_proxy staging-app:3000 {
+		flush_interval -1
+	}
+
+	handle /health {
+		reverse_proxy staging-app:3000
+	}
+}
+
 # --- LiveKit signaling (WSS) ---
 # This fronts ONLY the LiveKit signaling endpoint (port 7880). The actual voice
 # MEDIA travels over UDP 50000-60000 and TURN/TLS 5349, which are exposed directly
