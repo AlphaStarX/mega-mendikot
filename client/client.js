@@ -324,8 +324,9 @@ function onLobbyUpdate(m) {
 
 // Render the lobby as a 10-seat clickable table map. Seats are placed around an
 // oval (seat 0 at top, then clockwise). Even seats = Team A (blue), odd = Team B
-// (red), matching teamForSeat(). Open (bot) seats are dashed + clickable to claim
-// or switch; your own seat is gold-ringed; the host wears a 👑.
+// (red), matching teamForSeat(). Each chip shows "Seat N" above a short label;
+// open (bot) seats are dashed + clickable to claim/move; your own seat is
+// gold-ringed; the host wears a 👑.
 function renderLobbySeats(m) {
   const wrap = $("lobby-seats");
   wrap.innerHTML = "";
@@ -333,7 +334,7 @@ function renderLobbySeats(m) {
     const el = document.createElement("div");
     // Seat i sits at angle (i / 10) of a full turn, starting at the top (-90°).
     const angle = (s.seat / 10) * 2 * Math.PI - Math.PI / 2;
-    const radiusX = 42, radiusY = 38;            // % of the oval
+    const radiusX = 43, radiusY = 40;            // % of the oval — pulled in so chips clear the rail
     const left = 50 + radiusX * Math.cos(angle); // % across
     const top = 50 + radiusY * Math.sin(angle);  // % down
     el.className = `lobby-seat team-${s.team.toLowerCase()}`;
@@ -344,19 +345,24 @@ function renderLobbySeats(m) {
     el.style.top = `${top}%`;
     el.setAttribute("data-seat", s.seat);
     el.setAttribute("data-team", s.team);
+    const seatTag = `Seat ${s.seat + 1} · Team ${s.team}`;
     if (s.isBot) {
       // Open seat — clickable to claim/move here. (A team can't get a 6th human:
       // all 5 of its seats would be human, so no open seat would render here.)
-      el.innerHTML = `<span class="ls-plus">＋</span><span class="ls-name">Take seat ${s.seat + 1}</span>`;
-      el.title = `Join Team ${s.team} (seat ${s.seat + 1})`;
+      el.innerHTML = `<span class="ls-num">${seatTag}</span><span class="ls-name">＋ Empty</span>`;
+      el.title = `Click to take seat ${s.seat + 1} (Team ${s.team})`;
+      el.setAttribute("role", "button");
+      el.tabIndex = 0;
       el.addEventListener("click", () => {
         if (s.seat === state.you) return;
         send({ t: "chooseSeat", seat: s.seat });
       });
     } else {
-      const youTag = s.seat === state.you ? " (You)" : "";
       const crown = s.seat === m.hostSeat ? " 👑" : "";
-      el.innerHTML = `<span class="ls-dot"></span><span class="ls-name">${escapeHtml(s.name)}${youTag}${crown}</span>`;
+      const youTag = s.seat === state.you ? " (You)" : "";
+      el.innerHTML =
+        `<span class="ls-num">${seatTag}</span>` +
+        `<span class="ls-name">${escapeHtml(s.name)}${crown}${youTag}</span>`;
     }
     wrap.appendChild(el);
   });
