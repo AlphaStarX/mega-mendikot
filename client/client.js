@@ -844,13 +844,16 @@ function renderProfile() {
       statTile("Matches", s.matchesPlayed, "match", "♣") +
       statTile("Tens", s.tensCaptured, "tens", "★") +
     `</div>` +
-    // --- Match record (real aggregate breakdown, not a history list) ---
+    // --- Match record (a visual W/L/D proportion bar). Only shown once the
+    // player has at least one match — otherwise it's a confusing empty bar. ---
     `<div class="profile-section-label">Match Record</div>` +
-    `<div class="record-bar">` +
-      recordSegment("Wins", s.wins, decisive > 0 ? s.wins / (s.matchesPlayed || 1) : 0, "win") +
-      recordSegment("Losses", s.losses, decisive > 0 ? s.losses / (s.matchesPlayed || 1) : 0, "loss") +
-      recordSegment("Draws", s.draws, decisive > 0 ? s.draws / (s.matchesPlayed || 1) : 0, "draw") +
-    `</div>` +
+    (s.matchesPlayed > 0
+      ? `<div class="record-bar">` +
+          recordSegment("Wins", s.wins, s.matchesPlayed, "win") +
+          recordSegment("Losses", s.losses, s.matchesPlayed, "loss") +
+          recordSegment("Draws", s.draws, s.matchesPlayed, "draw") +
+        `</div>`
+      : `<div class="record-empty">Play a match to build your record</div>`) +
     // --- Coming soon (features not yet backed by data) ---
     `<div class="profile-section-label">More</div>` +
     `<div class="profile-soon-grid">` +
@@ -876,12 +879,14 @@ function statTile(label, value, cls, icon) {
   `</div>`;
 }
 
-// A horizontal record bar: each segment is a colored slice whose width is its
-// share of total matches (a visual W/L/D breakdown).
-function recordSegment(label, value, share, cls) {
-  const pct = Math.round(share * 100);
-  return `<div class="record-seg record-${cls}" style="flex:${Math.max(value, 0.001)}">` +
-    `<span class="record-seg-label">${label} ${value}${pct ? ` · ${pct}%` : ""}</span>` +
+// One segment of the record bar: width is value's share of `total` matches.
+// Zero-value segments are omitted entirely so the bar only shows outcomes that
+// actually occurred (no empty colored slivers).
+function recordSegment(label, value, total, cls) {
+  if (!value) return "";                      // skip zero outcomes — no empty slivers
+  const pct = Math.round((value / total) * 100);
+  return `<div class="record-seg record-${cls}" style="flex:${value}">` +
+    `<span class="record-seg-label">${label} ${value} · ${pct}%</span>` +
   `</div>`;
 }
 

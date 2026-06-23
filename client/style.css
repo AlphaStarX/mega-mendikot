@@ -184,7 +184,12 @@ body::after {
 .record-win { background: linear-gradient(180deg, #46a069, #2a6b42); color: #fff; }
 .record-loss { background: linear-gradient(180deg, #b5483a, #7d2e23); color: #fff; }
 .record-draw { background: linear-gradient(180deg, #4a4a4a, #2c2c2c); color: var(--text); }
-.record-bar:empty::before { content: "Play a match to build your record"; font-size: 12px; color: var(--muted); display: flex; align-items: center; padding-left: 12px; }
+/* Placeholder shown when a new account has played no matches yet. */
+.record-empty {
+  text-align: center; font-size: 13px; color: var(--muted); font-style: italic;
+  padding: 14px; border: 1px dashed rgba(255,255,255,.12); border-radius: 10px;
+  background: rgba(0,0,0,.2);
+}
 
 /* Coming-soon tiles (features not yet backed by data) */
 .profile-soon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
