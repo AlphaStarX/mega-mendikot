@@ -1011,46 +1011,44 @@ function renderHud() {
 }
 
 // ---------- captured-10s chip tracker ----------
-// Renders 4 rows (one per suit) × 6 chips (6 copies of the 10 per suit in the
-// 192-card mega deck). Each chip is colored by the team that captured that copy,
-// or left neutral if uncaptured. The server is the source of truth
-// (state.capturedTens = { A: [{suit}], B: [{suit}] }), so reconnect mid-match
-// shows the correct history. 24 total chips = 24 Tens in the deck.
+// Two per-team trackers: one inside Team A's score panel, one inside Team B's.
+// Each shows the Tens THAT team has captured — 4 rows (one per suit) x 6 chips
+// (6 copies of the 10 per suit in the 192-card mega deck). Captured chips take
+// the team's own color (via .score.team-x .tens-chip.captured); empty = still
+// live. The server is the source of truth (state.capturedTens = { A:[{suit}],
+// B:[{suit}] }), so a mid-match reconnect shows the right history. A tracker
+// stays hidden until that team captures its first Ten.
 const SUITS_ORDER = ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"];
 const COPIES_PER_SUIT = 6;
 
 function renderTensTracker() {
-  const wrap = $("tens-tracker");
-  if (!wrap) return;
-  // Build a per-suit → list-of-teams map from capturedTens. Order within a suit
-  // doesn't matter for display (chips are identical within a team+suit), so we
-  // just count how many of each suit each team took.
-  const counts = {};
-  let total = 0;
-  for (const suit of SUITS_ORDER) counts[suit] = { A: 0, B: 0 };
-  for (const team of ["A", "B"]) {
+  // Render one team's tracker. `team` is "A" or "B".
+  function renderTeam(team, wrap) {
+    if (!wrap) return;
+    // Count how many of each suit THIS team has captured.
+    const perSuit = {};
+    for (const suit of SUITS_ORDER) perSuit[suit] = 0;
     for (const c of (state.capturedTens[team] || [])) {
-      if (counts[c.suit]) { counts[c.suit][team]++; total++; }
+      if (perSuit[c.suit] !== undefined) perSuit[c.suit]++;
     }
+    const captured = (state.capturedTens[team] || []).length;
+    // Hide the tracker if this team hasn't captured any 10s yet — no empty
+    // placeholder cluttering the score panel at match start.
+    if (captured === 0) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+    wrap.classList.remove("hidden");
+    let html = "";
+    for (const suit of SUITS_ORDER) {
+      const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
+      // 6 chips: the captured ones (team color, set by CSS) then the rest empty.
+      let chips = "";
+      for (let i = 0; i < perSuit[suit]; i++) chips += `<span class="tens-chip captured" title="${team === "A" ? "Team A" : "Team B"}"></span>`;
+      for (let i = perSuit[suit]; i < COPIES_PER_SUIT; i++) chips += '<span class="tens-chip empty"></span>';
+      html += `<div class="tens-row"><span class="tens-suit-label" style="color:${color}">${SUIT_GLYPH[suit]}</span><span class="tens-chips">${chips}</span></div>`;
+    }
+    wrap.innerHTML = html;
   }
-  // Don't show an empty placeholder at match start (zero 10s captured) — it
-  // would render as a hollow dark box with 24 faint dashed outlines. The
-  // tracker appears as soon as the first Ten is captured.
-  if (total === 0) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
-  wrap.classList.remove("hidden");
-  let html = "";
-  for (const suit of SUITS_ORDER) {
-    const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
-    // Build 6 chips: fill A's first, then B's, rest empty. (The split between
-    // A and B for the same suit is shown as a run of A chips then a run of B
-    // chips — clear at a glance which team owns which copies.)
-    let chips = "";
-    for (let i = 0; i < counts[suit].A; i++) chips += '<span class="tens-chip a" title="Team A"></span>';
-    for (let i = 0; i < counts[suit].B; i++) chips += '<span class="tens-chip b" title="Team B"></span>';
-    for (let i = counts[suit].A + counts[suit].B; i < COPIES_PER_SUIT; i++) chips += '<span class="tens-chip empty"></span>';
-    html += `<div class="tens-row"><span class="tens-suit-label" style="color:${color}">${SUIT_GLYPH[suit]}</span><span class="tens-chips">${chips}</span></div>`;
-  }
-  wrap.innerHTML = html;
+  renderTeam("A", $("tens-tracker-a"));
+  renderTeam("B", $("tens-tracker-b"));
 }
 
 function updateMyTurn() {

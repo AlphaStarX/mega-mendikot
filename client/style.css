@@ -217,25 +217,29 @@ body::after {
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 .dot.a { background: var(--teamA); } .dot.b { background: var(--teamB); }
 
-/* Captured-10s chip tracker — a compact 4-row grid (one per suit) of 6 chips
-   each (6 copies of the 10 per suit in the mega deck = 24 total). Each chip is
-   colored by the team that captured that copy; empty = uncaptured. Sits in a
-   centered strip just under the HUD score bar. */
+/* Captured-10s chip tracker — now per-team. One tracker lives inside each
+   team's score panel, showing the Tens that team has captured: 4 rows
+   (one per suit) x 6 chips (6 copies of the 10 per suit). Captured chips
+   take the team's own color; empty = uncaptured. Hidden until that team
+   captures its first Ten. */
 .tens-tracker {
   display: flex; flex-direction: column; gap: 3px;
-  margin: 2px auto 0; padding: 6px 12px; width: fit-content;
-  max-width: 460px; background: rgba(0,0,0,.28); border-radius: 12px;
-  border: 1px solid rgba(245,197,66,.18);
+  margin-top: 6px; padding-top: 6px; width: 100%; max-width: 200px;
+  border-top: 1px solid rgba(255,255,255,.1);
 }
+/* Tracker aligns to its team's edge: A's to the left, B's to the right. */
+.score.team-a .tens-tracker { align-items: flex-start; }
+.score.team-b .tens-tracker { align-items: flex-end; }
 .tens-row { display: flex; align-items: center; gap: 6px; }
-.tens-suit-label { font-size: 15px; font-weight: 700; width: 16px; text-align: center; }
+.tens-suit-label { font-size: 14px; font-weight: 700; width: 14px; text-align: center; }
 .tens-chips { display: flex; gap: 3px; }
 .tens-chip {
-  width: 16px; height: 16px; border-radius: 4px;
+  width: 14px; height: 14px; border-radius: 4px;
   border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.05);
 }
-.tens-chip.a { background: var(--teamA); border-color: rgba(255,255,255,.4); }
-.tens-chip.b { background: var(--teamB); border-color: rgba(255,255,255,.4); }
+/* In a per-team tracker every captured chip is that team's color. */
+.score.team-a .tens-chip.captured { background: var(--teamA); border-color: rgba(255,255,255,.4); }
+.score.team-b .tens-chip.captured { background: var(--teamB); border-color: rgba(255,255,255,.4); }
 .tens-chip.empty { background: transparent; border-style: dashed; border-color: rgba(255,255,255,.12); }
 .center-info {
   display: flex; flex-direction: row; align-items: stretch; justify-content: center;

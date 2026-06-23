@@ -71,6 +71,9 @@
         <div class="score team-a">
           <div class="score-main"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-a">0</b></div>
+          <!-- Captured-10s for Team A: 4 suits x 6 chips each. Hidden until A
+               captures its first Ten. Lives under A's own score. -->
+          <div id="tens-tracker-a" class="tens-tracker hidden"></div>
         </div>
         <div class="center-info">
           <div id="trump-info" class="trump-info">Trump: <b id="trump-display"></b></div>
@@ -80,13 +83,10 @@
         <div class="score team-b">
           <div class="score-main">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-b">0</b></div>
+          <!-- Captured-10s for Team B: mirrors team-a. Hidden until B captures. -->
+          <div id="tens-tracker-b" class="tens-tracker hidden"></div>
         </div>
       </header>
-
-      <!-- Captured-10s tracker: 24 chips (4 suits × 6 copies), colored by team.
-           Hidden until the first Ten is captured, so an empty placeholder
-           doesn't sit below the score bar at match start. -->
-      <div id="tens-tracker" class="tens-tracker hidden"></div>
 
       <div class="hud-controls">
         <button id="game-help-btn" class="hud-btn help hidden" title="How to Play / Rules">?</button>
