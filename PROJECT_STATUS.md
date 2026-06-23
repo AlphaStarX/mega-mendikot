@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-22
+> **Last updated:** 2026-06-23
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -8,8 +8,10 @@
 > Debian 13, 2 vCores / 4 GB / 40 GB NVMe — **DEPLOYED & LIVE at https://play.mindikot.com**
 > **Preview:** `https://staging.mindikot.com` — permanent always-on preview of the `staging` branch
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
-> **Tests:** 50+ passing (rules + auth + livekit + bot + match + debug); match suite now <100ms
-> (was ~20s+) via setImmediate-based fastTimers + waitFor polling.
+> **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
+> automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
+> **Tests:** 89 passing (rules + auth + livekit + bot + match + debug); full suite ~1.1s (was a
+> 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
 
@@ -84,17 +86,23 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   CDN dependency. The UMD global is `LivekitClient` (NOT `LiveKit`/`Livekit`;
   the old code looked for the wrong name → voice silently broken until fixed).
 
-### ✅ Captured-10s chip tracker
-- **Persistent on-screen display** of which 10s have been captured, by which team.
-  A 4-row grid (one row per suit: ♠/♥/♦/♣) × 6 chips per row (6 copies of the 10
-  per suit in the 192-card mega deck = 24 total Tens). Each chip is colored by the
-  team that captured that copy (blue = Team A, red = Team B); empty/dashed = uncaptured.
+### ✅ Captured-10s chip tracker — per-team panels
+- **Two trackers, one per team**: each team has its own 4×6 chip grid nested
+  inside its score panel (A's under A's score, B's under B's), aligned to its
+  own edge (A left, B right). Captured chips take the team color (blue/red via
+  `.score.team-x .tens-chip.captured`); uncaptured are dashed outlines. Replaced
+  the earlier single combined tracker — splitting it removed the "whose chip is
+  whose" confusion.
+- **Always rendered (alignment fix)**: both trackers show the full 4×6 grid at
+  all times (even at match start, even when a team has 0 captures). Keeping both
+  panels the same height keeps the score bar perfectly vertically aligned — an
+  earlier "hide when empty" optimization caused the panels to go lopsided.
 - **Server is source of truth**: `this.capturedTens = { A: [{suit}], B: [{suit}] }`
   populated in `resolveTrick()` (both played cards and kitty reveal), sent in
   `init` (reconnect-safe) and `trickWon` (live). So a mid-match reconnect shows
   the correct history immediately.
-- **Client** (`renderTensTracker()`): rebuilds the grid on every HUD render. Sits
-  in a compact strip just below the score bar.
+- **Client** (`renderTensTracker()` → inner `renderTeam(team, wrap)`): renders
+  each team's own captures into its own panel; chips are `.captured` or `.empty`.
 
 ### ✅ Accounts — email/password (Phase 1)
 - **Signup/login/logout** with persistent display name + cross-device reconnect.
@@ -126,7 +134,9 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   glass chips (one consistent set), enlarged to 15px/22px for readability; all
   three now use the `Label: value` format (e.g. `Trick: 1/18`); empty-trump state
   shows no dash placeholder; winning played card raised to `z-index: 5` so it
-  always renders above overlaps.
+  always renders above overlaps. **Lead chip stays always visible** — shows a
+  muted `—` placeholder before the first card of a trick lands, then the suit
+  glyph; no longer pops in/out between tricks (which shifted the center layout).
 - **"Thinking" indicator**: replaced the italic "thinking…" text with a chat-style
   three-gold-dot typing bubble.
 
@@ -204,14 +214,53 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 
 ### ✅ Deployment infrastructure
 - **`Dockerfile`**: containerizes the app; runs `npm ci` + `prisma generate` + `migrate deploy`.
-- **`deploy/docker-compose.yml`**: 4 services — `app` + `db` (postgres:16) + `livekit` SFU +
-  `caddy` reverse proxy, all on one box.
-- **`deploy/Caddyfile`**: automatic Let's Encrypt TLS for `play.*`, `voice.*`,
+- **`deploy/docker-compose.yml`**: 6 services in one shared stack — `app` + `staging-app`
+  (both node :3000, reached by service name) + `db` + `staging-db` (postgres:16, separate
+  volumes) + `livekit` SFU + `caddy` reverse proxy. Prod and staging share Caddy/network/SFU
+  but are otherwise fully isolated.
+- **`deploy/Caddyfile`**: automatic Let's Encrypt TLS for `play.*`, `staging.*`, `voice.*`,
   and the apex `mindikot.com` (which 301-redirects to `play.*` for one canonical URL).
 - **`deploy/livekit.yaml`**: self-hosted SFU + embedded TURN config.
 - **`deploy/README.md`**: full 10-phase runbook (domain/DNS → provision → firewall →
-  secrets → TURN cert → bring up → verify → ops), provider: OVHcloud (Canada BHS).
+  secrets → TURN cert → bring up → verify → ops → staging), provider: OVHcloud (Canada BHS).
+- **`docs/DEPLOYMENT.md`**: **the active ops runbook** — server details, the ship-to-staging /
+  promote-to-prod workflows, box-specific caveats, the stash-pull-pop dance, troubleshooting,
+  and the auto-deploy key setup. Read this first for day-to-day ops.
 - **`render.yaml`**: alternative Render Blueprint (updated for deps + DB + auth).
+
+### ✅ Staging environment — `staging.mindikot.com` (permanent preview)
+- **Always-on preview of the `staging` branch**, isolated from prod. Same app image built from
+  a second checkout (`~/mega-mindikot-staging`) with its **own throwaway Postgres** (`staging-db`
+  / `pg_data_staging`), so signup/login/reconnect/migrations test against throwaway data. Voice
+  reuses prod's shared LiveKit SFU (stateless tokens).
+- **Brought up 2026-06-23**: DNS `staging` A record → cloned staging checkout → added
+  `STAGING_DOMAIN` to `.env` → `docker compose up -d --build staging-app` → recreated Caddy
+  (~5s prod blip) → Let's Encrypt cert issued for `staging.*` in ~3s. Total prod isolation:
+  staging-app can't reach prod's `db`/`pg_data`; Caddy routes by hostname.
+- **Cost:** ~+180 MB RAM (Node + Postgres) on the 4 GB box. Comfortable at launch scale.
+
+### ✅ Auto-deploy to staging (GitHub Actions CI/CD)
+- **`.github/workflows/staging-deploy.yml`**: on `push` to `staging`, runs the test suite; if
+  green, SSHes into the box and rebuilds `staging-app`. `push → npm test → git pull +
+  docker compose up --build staging-app → staging URL updated` within ~2 min. Two jobs
+  (`test`, `deploy` with `needs: test`), `concurrency` cancels superseded runs, minimal
+  `permissions: contents: read`. **Trigger is `staging`-only** — never `live`/`main`/PRs;
+  promotion to prod stays a deliberate manual step.
+- **Auth**: deploy-only ed25519 SSH key (public half in the box's `authorized_keys`, private
+  half in GitHub secret `STAGING_SSH_KEY`). Additive — password login unaffected. Secrets:
+  `STAGING_HOST`, `STAGING_USER`, `STAGING_SSH_KEY`. Setup in `docs/DEPLOYMENT.md §8a`.
+- **A failing test blocks the deploy** (staging stays on last-good commit) — staging is always
+  QA-able. First green run verified end-to-end 2026-06-23.
+
+### ✅ Test-suite reliability fix (unblocked CI)
+- **Root cause of the 5-min CI hang**: the match tests created `GameRoom`s and ran matches via
+  `fastTimers()` (a global `setImmediate`-based timer override for speed) but **never tore the
+  rooms down**. Each finished match left its turn-timer `setInterval`'s recursive `setImmediate`
+  loop spinning forever, pinning the Node event loop so the process never exited. Every
+  assertion passed — the suite just hung at exit. This blocked the auto-deploy test gate entirely.
+- **Fix**: wrapped each match test in `try/finally` calling `room.clearTimers()` (the same
+  teardown production's cleanup interval uses) before restoring timers. Full suite now runs in
+  **~1.1s** (was a 5-min timeout): **89/89 pass, 0 fail**, clean exit.
 
 > **Hosting note (history):** OVHcloud → DigitalOcean Toronto → Contabo → **back to
 > OVHcloud**. OVH was first set aside due to a slow first-boot/provisioning experience
@@ -258,15 +307,26 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 | Branch | Purpose | Status |
 |---|---|---|
 | `main` | Original baseline (initial commit only) | Untouched since first commit |
-| `live` | **Production — deployed on OVH** | In sync with `staging` (all features shipped here) |
-| `staging` | Active development | In sync with `live` |
+| `live` | **Production — deployed on OVH** | Deployed; slightly behind `staging` (staging-only UI + CI work) |
+| `staging` | Active development + **auto-deploys to staging URL** | 1+ commits ahead of `live` |
 
-**Promotion flow:** develop on `staging` → test (`npm test`) → merge `staging` → `live` → push → redeploy:
+**Ship-to-staging flow (automated):** just push — CI does the rest:
+```bash
+git push origin staging
+# → GitHub Actions: npm test → if green, SSH + rebuild staging-app
+# → https://staging.mindikot.com updated within ~2 min
+```
+
+**Promote to prod flow (manual, by design):** QA on staging URL first, then:
 ```bash
 git checkout live && git merge --ff-only staging && git push origin live
 # then on the server: cd ~/mega-mindikot && git pull && cd deploy && docker compose up -d --build app
 ```
-**Server clone** uses `-b live`: `git clone -b live https://github.com/AlphaStarX/mega-mindikot.git`.
+> Never automated — `live` is production and stays a deliberate human step.
+> See `docs/DEPLOYMENT.md §2` for both flows + the manual-override SSH commands.
+
+**Server checkouts:** prod at `~/mega-mindikot` (branch `live`), staging at
+`~/mega-mindikot-staging` (branch `staging`). Both in one shared compose stack.
 
 ---
 
@@ -286,18 +346,27 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ---
 
-## 6. Commit history (recent — staging = live)
+## 6. Commit history (recent)
+
+> **Branch state:** `staging` is ahead of `live` by several commits (staging-only work:
+> per-team chip tracker, Lead-chip-always-visible, staging-env infra, auto-deploy CI, test
+> teardown fix, ops docs). The staging-env **infra** commit was cherry-picked to `live` so the
+> box could run staging services; the UI/CI/docs commits are still staging-only pending QA +
+> promotion. Cherry-pick SHA on `live`: `772ea38`.
 
 ```
-d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README, faster tests
-97ff842 feat: all-player voice, relocate mic button, captured-10s chip tracker
-b8a06d4 fix(voice): vendor LiveKit SDK + correct UMD global name (LivekitClient)
-f60ee44 docs: switch deployment target from Contabo to OVHcloud (Canada BHS, Debian 13)
-0debaff docs: update PROJECT_STATUS — ceremony commit history + deadlock/stale-state notes
-ddd6f6c Add visible lead-selection ceremony + deadlock UI + stale-state fix
-3b3e9d4 Test the debug/logging panel and fix two load-time bugs
-a430fcd Change 12-12 deadlock rule: most tricks won (was: last trick)
+eb123dc fix(test): tear down GameRoom timers so npm test exits cleanly    [staging]
+f4c7dc4 ci: verify auto-deploy loop (secrets now configured)              [staging]
+8995711 ci: auto-deploy staging branch to staging.mindikot.com            [staging]
+66c0ea8 docs: add DEPLOYMENT.md ops runbook, link from PROJECT_STATUS      [staging]
+8b53262 feat(deploy): add staging.mindikot.com preview environment        [staging+live¹]
+7a131e8 fix(ui): always render both team trackers + keep Lead chip visible [staging]
+26f7c89 feat(ui): split captured-10s tracker into two per-team panels     [staging]
+ec5725c fix(ui): hide empty captured-10s tracker at match start           [staging]
+4202fc7 docs: update PROJECT_STATUS — deployed live, all-player voice...  [staging+live]
+d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [staging+live]
 ```
+¹ `8b53262` was cherry-picked to `live` as `772ea38` (deploy-infra only, no UI changes).
 (Full earlier history in `git log`; initial commit was `68eda4d`.)
 
 ---
@@ -335,6 +404,15 @@ Phase 1 (auth) is done; these are additive:
 | **7** | Google/GitHub OAuth | Medium |
 
 ### Small standalone TODOs
+- **Repo ↔ box drift (cleanup from staging bring-up):** the box's `~/mega-mindikot`
+  has 3 local edits not in the repo (see `docs/DEPLOYMENT.md §5`). Two should be
+  committed to align repo with reality: (a) staging build-context path
+  (`../../mega-mindikot-staging`, not `../mega-mindikot-staging`); (b) LiveKit UDP
+  range `50000-50100` (not `50000-60000`, to match the box's UFW). The third
+  (`livekit.yaml` real secrets) stays box-only by design. Fixing (a)+(b) shrinks
+  the stash-pull-pop dance to just `livekit.yaml`.
+- **Pin the SSH deploy action to a SHA** (currently `appleboy/ssh-action@v1.2.0`)
+  for supply-chain hardening. Optional; the version pin is fine to start.
 - **RULEBOOK.md 15s → 20s timer correction**: the live game uses a 20s turn timer
   (`TURN_SECONDS`), but RULEBOOK.md still says 15s in §7.6/§8.4/§11.5/§10.11.
   README was written with the correct 20s; the RULEBOOK itself needs the fix.
@@ -344,8 +422,9 @@ Phase 1 (auth) is done; these are additive:
 
 > ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases).
 > ✅ **Interactive tutorial** — shipped (see §2).
-> ✅ **Captured-10s tracker** — shipped (see §2).
+> ✅ **Captured-10s tracker (per-team panels)** — shipped (see §2).
 > ✅ **Opt-in / all-player / lobby voice** — shipped (see §2).
+> ✅ **Staging environment + auto-deploy CI** — shipped (see §2).
 
 ---
 
@@ -354,7 +433,8 @@ Phase 1 (auth) is done; these are additive:
 - **DEPLOYED & LIVE** at `https://play.mindikot.com` since 2026-06-22. The full
   stack (app + Postgres + LiveKit SFU + Caddy) is running on the OVH VPS
   (`158.69.49.43`). Game, accounts, voice all functional. Apex `mindikot.com`
-  redirects to `play.*`.
+  redirects to `play.*`. **Staging preview** live at `https://staging.mindikot.com`
+  since 2026-06-23 (own throwaway DB, shared SFU, auto-deploys on push).
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.
@@ -364,8 +444,9 @@ Phase 1 (auth) is done; these are additive:
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device
   reconnect.
-- **`staging` push to GitHub** hit a transient network timeout on the last batch;
-  the identical commit is already on `live`, so no divergence risk. Retries on next push.
+- **Box SSH is password-based** as `debian` (the README's Phase 2 `mm`-user hardening
+  was never run). A deploy-only ed25519 key was added for GitHub Actions (additive);
+  password login is still the human path. See `docs/DEPLOYMENT.md §1, §8a`.
 
 ---
 
