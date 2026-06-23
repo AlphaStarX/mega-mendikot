@@ -314,6 +314,19 @@ function handleMessage(ws, msg) {
         });
       }
       break;
+    case "getStats":
+      // Fetch the current user's fresh aggregate stats (e.g. to refresh the
+      // Profile screen after a match). Authenticated-only; fail-soft to null.
+      if (ws.authenticated && ws.userId) {
+        const db = getDb();
+        if (!db) { send(ws, { t: "stats", stats: null }); break; }
+        db.user.findUnique({ where: { id: ws.userId }, select: STATS_FIELDS })
+          .then((u) => send(ws, { t: "stats", stats: u || null }))
+          .catch((e) => { console.error("getStats error:", e); send(ws, { t: "stats", stats: null }); });
+      } else {
+        send(ws, { t: "stats", stats: null });
+      }
+      break;
     case "ping": send(ws, { t: "pong" }); break;
   }
 }
@@ -323,12 +336,26 @@ function handleMessage(ws, msg) {
 // isn't configured (JWT_SECRET / DATABASE_URL unset), every handler replies
 // authDisabled and the game plays anonymously exactly as before.
 
+// The 5 aggregate stat fields on User (Phase 2). Used wherever we read a user
+// for auth/identity so stats ride along without a second query.
+const STATS_FIELDS = { wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true };
+function statsOf(user) {
+  if (!user) return null;
+  return {
+    wins: user.wins || 0,
+    losses: user.losses || 0,
+    draws: user.draws || 0,
+    matchesPlayed: user.matchesPlayed || 0,
+    tensCaptured: user.tensCaptured || 0,
+  };
+}
+
 function authReplyOk(ws, user) {
   const token = signToken({ userId: user.id, email: user.email });
   ws.userId = user.id;
   ws.userName = user.displayName;
   ws.authenticated = true;
-  send(ws, { t: "authOk", token, userId: user.id, name: user.displayName });
+  send(ws, { t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user) });
 }
 
 function handleSignup(ws, msg) {
@@ -387,7 +414,7 @@ function handleAuthenticate(ws, msg) {
       ws.userId = user.id;
       ws.userName = user.displayName;
       ws.authenticated = true;
-      send(ws, { t: "authOk", token, userId: user.id, name: user.displayName });
+      send(ws, { t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user) });
     })
     .catch((e) => console.error("authenticate error:", e));
 }

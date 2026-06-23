@@ -19,6 +19,7 @@
           <button id="quick-btn" class="primary">Quick Match</button>
           <button id="create-btn">Create Private Room</button>
           <button id="howto-btn">How to Play</button>
+          <button id="profile-btn" class="hidden">📊 My Stats</button>
         </div>
         <div class="join-code-row">
           <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
@@ -139,6 +140,17 @@
           <button id="rematch-btn" class="primary">Play Again</button>
           <button id="end-help-btn">How to Play</button>
           <button id="end-leave-btn" class="link-btn">Leave</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Profile / Stats screen (Phase 2) -->
+    <section id="profile-screen" class="screen hidden">
+      <div class="card-panel" style="min-width:380px">
+        <h1 id="profile-title">My Stats</h1>
+        <div id="profile-stats"></div>
+        <div class="menu-buttons" style="margin-top:18px">
+          <button id="profile-back-btn">Back</button>
         </div>
       </div>
     </section>

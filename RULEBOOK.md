@@ -445,13 +445,13 @@ Once all **10 cards** are on the table, the trick is resolved:
 
 ### 7.6 Special Timing Rule — Turn Timer
 
-To keep the game moving, each player has **15 seconds** to play their card when it's their turn:
+To keep the game moving, each player has **20 seconds** to play their card when it's their turn:
 
 - At **5 seconds remaining**, a warning appears (the active player's indicator flashes).
 - If the timer reaches **0**, the system **auto-plays** a card for that player (see Auto-Play in Section 8).
 - If a player **times out twice in a row**, they're flagged **AFK** ("away from keyboard"), and their turns are auto-played **instantly** until they manually play a card again.
 
-> **For physical (non-digital) play:** Use a sand timer or phone stopwatch. Agree on a time limit with your group — 15 seconds is the standard, but casual groups often extend it.
+> **For physical (non-digital) play:** Use a sand timer or phone stopwatch. Agree on a time limit with your group — 20 seconds is the standard, but casual groups often extend it.
 
 ---
 
@@ -532,7 +532,7 @@ There are **four actions** a player can take during a match. Here's each one in 
 **Description:** When a player's turn timer runs out, a card is played **automatically** for them using a fixed priority order.
 
 **When it happens:**
-- The player's **15-second timer** reaches 0, **or**
+- The player's **20-second timer** reaches 0, **or**
 - The player is flagged **AFK** (timed out twice in a row — their turns are auto-played instantly).
 
 **The Auto-Play priority order:**

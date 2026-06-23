@@ -90,6 +90,8 @@ const state = {
   token: getToken(),
   authenticated: false,
   authPending: null,   // deferred join waiting for auth to resolve
+  // --- player stats (Phase 2) ---
+  stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
   // lobby
   room: null,
   hostSeat: null,
@@ -210,6 +212,7 @@ function handle(m) {
     case "authError": onAuthError(m); break;
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
+    case "stats": onStats(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
     case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
@@ -235,6 +238,7 @@ function onAuthOk(m) {
   state.userId = m.userId;
   state.userName = m.name;
   state.authenticated = true;
+  if (m.stats !== undefined) state.stats = m.stats;
   setToken(m.token);
   clearTimeout(state._authFallback);
   // If we were waiting to join (connect deferred auth), send the join now.
@@ -273,8 +277,18 @@ function onLoggedOut() {
   state.userId = null;
   state.userName = null;
   state.authenticated = false;
+  state.stats = null;
   refreshAuthUI();
   showScreen("join-screen");
+}
+
+// ---------- player stats (Phase 2) ----------
+// Refresh stats arrives from the server (getStats reply, or embedded in authOk).
+function onStats(m) {
+  state.stats = m.stats || null;
+  // If the profile screen is visible, re-render it with the fresh numbers.
+  const screen = $("profile-screen");
+  if (screen && !screen.classList.contains("hidden")) renderProfile();
 }
 
 // Send a signup request over an open socket. Opens one if needed.
@@ -754,7 +768,7 @@ function onMatchEnd(m) {
 
 // ---------- rendering ----------
 function showScreen(id) {
-  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen"].forEach((s) => $(s).classList.add("hidden"));
+  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
   // The in-match "?" help button is only relevant while playing.
   const help = $("game-help-btn");
@@ -782,6 +796,43 @@ function refreshAuthUI() {
     if (welcome) welcome.classList.add("hidden");
     if (guestActions) guestActions.classList.remove("hidden");
   }
+  // The Profile/Stats button is only for authenticated users.
+  const profileBtn = $("profile-btn");
+  if (profileBtn) profileBtn.classList.toggle("hidden", !state.authenticated);
+}
+
+// ---------- player stats rendering (Phase 2) ----------
+// Render the profile screen from state.stats. Handles the null/guest case with a
+// "log in to track stats" prompt. Win rate excludes draws from the denominator.
+function renderProfile() {
+  const wrap = $("profile-stats");
+  if (!wrap) return;
+  if (!state.authenticated || !state.stats) {
+    wrap.innerHTML =
+      `<p class="hint" style="margin:8px 0">Log in to track your wins, losses, and Tens captured across matches.</p>` +
+      `<button id="profile-login-btn" class="primary">Log in / Sign up</button>`;
+    const login = $("profile-login-btn");
+    if (login) login.addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });
+    return;
+  }
+  const s = state.stats;
+  const decisive = s.wins + s.losses;          // draws excluded from win-rate denominator
+  const winRate = decisive > 0 ? Math.round((s.wins / decisive) * 100) : null;
+  wrap.innerHTML =
+    `<div class="stats-grid">` +
+      statCard("Wins", s.wins, "var(--gold)") +
+      statCard("Losses", s.losses, "var(--red)") +
+      statCard("Draws", s.draws, "var(--muted)") +
+    `</div>` +
+    `<div class="stats-row">` +
+      `<span><b>${s.matchesPlayed}</b> matches played</span>` +
+      `<span><b>${s.tensCaptured}</b> Tens captured</span>` +
+      (winRate !== null ? `<span>Win rate <b>${winRate}%</b></span>` : ``) +
+    `</div>`;
+}
+
+function statCard(label, value, color) {
+  return `<div class="stat-card"><div class="stat-value" style="color:${color}">${value}</div><div class="stat-label">${label}</div></div>`;
 }
 
 function showAuthMsg(text) {
@@ -1244,6 +1295,22 @@ $("lobby-voice-toggle").addEventListener("contextmenu", (e) => {
 $("howto-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("learn"));
 $("game-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
 $("end-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
+
+// --- Profile / Stats (Phase 2) ---
+// The button is only visible when authenticated (refreshAuthUI toggles it).
+const profileBtn = $("profile-btn");
+if (profileBtn) {
+  profileBtn.addEventListener("click", () => {
+    // Refresh fresh stats from the server, then show the profile screen.
+    send({ t: "getStats" });
+    renderProfile();
+    showScreen("profile-screen");
+  });
+}
+const profileBackBtn = $("profile-back-btn");
+if (profileBackBtn) {
+  profileBackBtn.addEventListener("click", () => showScreen("join-screen"));
+}
 
 // --- Auth screen wiring (Phase 1) ---
 $("login-btn").addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });

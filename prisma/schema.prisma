@@ -21,8 +21,17 @@ model User {
   displayName  String
   createdAt    DateTime @default(now())
 
+  // Phase 2 — aggregate lifetime stats. All default 0 so existing rows + new
+  // signups start clean. Recorded incrementally in GameRoom.recordStats() at
+  // match end. No per-match history yet (a later phase).
+  wins          Int @default(0)
+  losses        Int @default(0)
+  draws         Int @default(0)
+  matchesPlayed Int @default(0)
+  tensCaptured  Int @default(0)
+
   // Reserved for later phases (added via additive migrations, not yet queried):
-  //   wins, losses, tensCaptured, matchesPlayed, xp, level, avatarUrl, country, playerId
+  //   xp, level, avatarUrl, country, playerId
 
   @@index([email])
 }

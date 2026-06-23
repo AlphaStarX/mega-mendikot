@@ -419,4 +419,72 @@ test("resetToLobby: rejects when not FINISHED", () => {
   }
 });
 
+// ---------- Phase 2: stats classification + recording ----------
+// classifySeats is a pure static method — no DB — so it's fast and deterministic.
+// It maps each human seat to a {won, lost, draw} classification given the
+// winning team. Bots and guests are filtered out.
+
+test("classifySeats: Team A wins -> A humans won, B humans lost", () => {
+  const seats = [
+    { isHuman: true,  sessionId: "u1", team: "A", tens: 3 },
+    { isHuman: true,  sessionId: "u2", team: "B", tens: 1 },
+    { isHuman: false, sessionId: null, team: "A", tens: 0 }, // bot — filtered
+  ];
+  const out = GameRoom.classifySeats(seats, "A");
+  assert.equal(out.length, 2, "only the two humans");
+  assert.equal(out[0].sessionId, "u1");
+  assert.equal(out[0].won, true, "A human won");
+  assert.equal(out[0].lost, false);
+  assert.equal(out[0].draw, false);
+  assert.equal(out[0].tens, 3);
+  assert.equal(out[1].sessionId, "u2");
+  assert.equal(out[1].won, false);
+  assert.equal(out[1].lost, true, "B human lost");
+  assert.equal(out[1].draw, false);
+});
+
+test("classifySeats: winningTeam null -> everyone draws", () => {
+  const seats = [
+    { isHuman: true, sessionId: "u1", team: "A", tens: 2 },
+    { isHuman: true, sessionId: "u2", team: "B", tens: 2 },
+  ];
+  const out = GameRoom.classifySeats(seats, null);
+  assert.equal(out.length, 2);
+  assert.equal(out.every((u) => u.draw), true, "both draws");
+  assert.equal(out.every((u) => !u.won && !u.lost), true, "no win/loss on a draw");
+});
+
+test("classifySeats: guests (no sessionId) and bots are skipped", () => {
+  const seats = [
+    { isHuman: true,  sessionId: "real-user-id", team: "A", tens: 4 },
+    { isHuman: true,  sessionId: null,           team: "B", tens: 0 }, // guest — skipped
+    { isHuman: false, sessionId: null,           team: "A", tens: 0 }, // bot — skipped
+  ];
+  const out = GameRoom.classifySeats(seats, "A");
+  assert.equal(out.length, 1, "only the authenticated human remains");
+  assert.equal(out[0].sessionId, "real-user-id");
+});
+
+test("classifySeats: empty seats list -> empty result", () => {
+  assert.deepEqual(GameRoom.classifySeats([], "A"), []);
+  assert.deepEqual(GameRoom.classifySeats([], null), []);
+});
+
+test("recordStats: no DB configured -> no-op, no throw", () => {
+  // Ensure DATABASE_URL is unset so getDb() returns null (the fail-soft path).
+  const saved = process.env.DATABASE_URL;
+  delete process.env.DATABASE_URL;
+  const room = new GameRoom("RS1");
+  try {
+    room.seats[0].isHuman = true;
+    room.seats[0].isBot = false;
+    room.seats[0].sessionId = "u1";
+    room.seats[0].tens = 5;
+    // Must not throw even though stats can't be recorded.
+    assert.doesNotThrow(() => room.recordStats("A"));
+  } finally {
+    room.clearTimers();
+    if (saved !== undefined) process.env.DATABASE_URL = saved;
+  }
+});
 

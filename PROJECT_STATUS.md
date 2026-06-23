@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (Task 7 — team selection + Play Again + party voice)
+> **Last updated:** 2026-06-23 (Phase 2 stats + profile; Task 7 lobby)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -10,7 +10,7 @@
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
 > automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
-> **Tests:** 98 passing (rules + auth + livekit + bot + match + debug); full suite ~1.3s (was a
+> **Tests:** 103 passing (rules + auth + livekit + bot + match + debug + stats); full suite ~1.1s (was a
 > 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
@@ -114,6 +114,36 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   plays anonymously. Guests and authenticated players coexist.
 - **Tested end-to-end locally** against a Docker Postgres — signup, login, reconnect,
   wrong-password rejection all verified.
+
+### ✅ Win/loss stats + Profile screen (Phase 2)
+Authenticated players now accumulate lifetime aggregate stats, viewable on a
+dedicated Profile screen. Builds directly on Phase 1's `User` table.
+
+- **5 aggregate columns on `User`** (additive migration `20260623000000_add_player_stats`,
+  all default 0): `wins`, `losses`, `draws`, `matchesPlayed`, `tensCaptured`. No
+  per-match history table yet (a later phase). The app runs `migrate deploy` on
+  container boot, so prod/staging apply it automatically on next rebuild.
+- **`recordStats()` in `endMatch()`** (`server/game-room.js`): at match end, each
+  authenticated human's row is incremented (matches +1; wins/losses/draws per
+  their team's result; tensCaptured += their seat's tens). The identity seam is
+  the existing one — an authenticated human's `User.id` already flows through as
+  `seat.sessionId`. Guests (sessionId with no matching row) are skipped via a
+  caught Prisma `P2025`. **Fire-and-forget** (never `await`ed, errors swallowed)
+  so stats recording can't break the match-end flow.
+- **Pure classification** (`GameRoom.classifySeats(seats, winningTeam)` static):
+  maps each human seat to `{won, lost, draw, tens}` — unit-tested in isolation
+  with no DB. Handles the `winningTeam === null` (draw) and 12-12 deadlock cases.
+- **Stats ride auth responses**: `authOk` (login/signup/session-restore) now
+  includes `stats: {wins,losses,draws,matchesPlayed,tensCaptured}`, so the client
+  has data immediately on login without a round-trip. A `getStats` message
+  returns fresh stats (e.g. to refresh the Profile screen after a match).
+- **Dedicated Profile screen** (`#profile-screen`): a 3-card W/L/D grid (gold/red/
+  muted), plus matches played, total Tens captured, and win-rate % (draws excluded
+  from the denominator). Reached via a "📊 My Stats" button on the main menu
+  (authenticated only; `refreshAuthUI` toggles it). Guests see a "log in to track
+  stats" prompt with a login shortcut.
+- **Tests:** +5 (classifySeats win/loss, draw, guest+bot skip, empty; recordStats
+  fail-soft no-DB no-throw). **103/103 pass.**
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -429,11 +459,11 @@ candidate work items:
   tap targets + the claim interaction want a real-device pass).
 
 ### Account-system phases (DB foundation is in place)
-Phase 1 (auth) is done; these are additive:
+Phases 1–2 are done; these are additive:
 
 | Phase | Feature | Effort |
 |---|---|---|
-| **2** | Win/loss stats + match history + profile screen | Small-medium |
+| **2** ✅ | ~~Win/loss stats + profile screen~~ — shipped (aggregates only; per-match history is a later phase) | — |
 | **3** | Leaderboard (top N by wins/rating) | Small |
 | **4** | Player IDs (shareable), avatars, country flags | Medium |
 | **5** | XP system + player levels | Medium |
@@ -450,11 +480,10 @@ Phase 1 (auth) is done; these are additive:
   the stash-pull-pop dance to just `livekit.yaml`.
 - **Pin the SSH deploy action to a SHA** (currently `appleboy/ssh-action@v1.2.0`)
   for supply-chain hardening. Optional; the version pin is fine to start.
-- **RULEBOOK.md 15s → 20s timer correction**: the live game uses a 20s turn timer
-  (`TURN_SECONDS`), but RULEBOOK.md still says 15s in §7.6/§8.4/§11.5/§10.11.
-  README was written with the correct 20s; the RULEBOOK itself needs the fix.
 - **Speaking-activity indicators (VAD)**: the per-seat mic glyphs were removed (clutter);
   if "who is talking" is wanted, it needs LiveKit speaking events — a separate feature.
+- **Per-match history**: Phase 2 records aggregate stats only (wins/losses/tens). A
+  scrollable match-by-match history needs a new `Match` table — a later phase.
 
 > ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases).
 > ✅ **Interactive tutorial** — shipped (see §2).
@@ -477,7 +506,7 @@ Phase 1 (auth) is done; these are additive:
   transient "can't provide a secure connection" until it's issued. One-time.
 - **Task 7 (team selection + Play Again + party voice)** shipped on `staging`;
   pending QA + promotion to `live` (see §7).
-- **OAuth, stats, XP, friends, leaderboard** — all deferred to roadmap phases.
+- **OAuth, XP, friends, leaderboard, per-match history** — all deferred to roadmap phases.
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device
   reconnect.
