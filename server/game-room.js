@@ -303,9 +303,15 @@ export class GameRoom {
     if (!seat || !seat.hand || !seat.hand.length) return; // nothing to play
     seat.timeouts++;
     if (seat.timeouts >= 2) seat.isAfk = true;
-    const card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
-    // autoPlayPick can return null/undefined if no legal pick is found; guard so a
-    // thrown error here doesn't poison the recurring turn-timer tick loop.
+    let card;
+    try {
+      card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
+    } catch (e) {
+      // autoPlayPick threw (shouldn't for a non-empty hand) — log + force a
+      // lowest-card fallback so the match can never deadlock on a stuck bot.
+      this.log.push(`auto-play threw for seat ${this.activeSeat} (${e.message}); forcing fallback.`);
+      card = seat.hand.slice().sort((a, b) => a.rank - b.rank)[0];
+    }
     if (!card) {
       this.log.push(`auto-play had no card for seat ${this.activeSeat}; skipping.`);
       return;
