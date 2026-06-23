@@ -211,6 +211,7 @@ function handle(m) {
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
+    case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
     case "leadSelect": onLeadSelect(m); break;
     case "init": onInit(m); break;
@@ -224,7 +225,6 @@ function handle(m) {
     case "chat": onChat(m); break;
     case "voiceState": onVoiceState(m); break;
     case "lobbyVoice": offerVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken }); break;
-    case "voiceEnd": disconnectVoice(); break;
     case "error": showMsg(m.message); break;
   }
 }
@@ -306,7 +306,6 @@ function onLobbyUpdate(m) {
   state.room = m.room;
   state.hostSeat = m.hostSeat;
   state.seats = m.seats;
-  if (state.you === null) state.you = findMySeat(m.seats);
   showScreen("lobby-screen");
   $("lobby-code").textContent = m.room;
   const linkWrap = $("lobby-link-wrap");
@@ -316,29 +315,57 @@ function onLobbyUpdate(m) {
   } else {
     linkWrap.textContent = "Quick match — bots fill empty seats shortly.";
   }
-  // Render seats
-  const host = $("lobby-seats");
-  host.innerHTML = "";
-  m.seats.forEach((s) => {
-    const el = document.createElement("div");
-    const label = s.isBot ? "Waiting…" : `${s.name}${s.seat === state.you ? " (You)" : ""}${s.seat === m.hostSeat ? " 👑" : ""}`;
-    el.className = `lobby-seat team-${s.team.toLowerCase()}${s.isBot ? " empty" : ""}`;
-    el.innerHTML = `<span class="ls-dot"></span><span>${label}</span>`;
-    host.appendChild(el);
-  });
+  renderLobbySeats(m);
   // Host controls
   const isHost = state.you === m.hostSeat;
   $("lobby-start-btn").classList.toggle("hidden", !isHost);
   $("lobby-waiting").classList.toggle("hidden", isHost);
 }
 
-function findMySeat(seats) {
-  // We don't know our seat from lobby alone; match by nothing available yet.
-  // The server tells us via init.you once the game starts. For lobby display
-  // we approximate "you" by matching our name against seats.
-  const name = $("name-input").value.trim();
-  const me = seats.find((s) => !s.isBot && s.name === (name || "Player"));
-  return me ? me.seat : null;
+// Render the lobby as a 10-seat clickable table map. Seats are placed around an
+// oval (seat 0 at top, then clockwise). Even seats = Team A (blue), odd = Team B
+// (red), matching teamForSeat(). Open (bot) seats are dashed + clickable to claim
+// or switch; your own seat is gold-ringed; the host wears a 👑.
+function renderLobbySeats(m) {
+  const wrap = $("lobby-seats");
+  wrap.innerHTML = "";
+  m.seats.forEach((s) => {
+    const el = document.createElement("div");
+    // Seat i sits at angle (i / 10) of a full turn, starting at the top (-90°).
+    const angle = (s.seat / 10) * 2 * Math.PI - Math.PI / 2;
+    const radiusX = 42, radiusY = 38;            // % of the oval
+    const left = 50 + radiusX * Math.cos(angle); // % across
+    const top = 50 + radiusY * Math.sin(angle);  // % down
+    el.className = `lobby-seat team-${s.team.toLowerCase()}`;
+    if (s.isBot) el.classList.add("open");
+    if (s.seat === state.you) el.classList.add("mine");
+    if (s.seat === m.hostSeat) el.classList.add("host");
+    el.style.left = `${left}%`;
+    el.style.top = `${top}%`;
+    el.setAttribute("data-seat", s.seat);
+    el.setAttribute("data-team", s.team);
+    if (s.isBot) {
+      // Open seat — clickable to claim/move here. (A team can't get a 6th human:
+      // all 5 of its seats would be human, so no open seat would render here.)
+      el.innerHTML = `<span class="ls-plus">＋</span><span class="ls-name">Take seat ${s.seat + 1}</span>`;
+      el.title = `Join Team ${s.team} (seat ${s.seat + 1})`;
+      el.addEventListener("click", () => {
+        if (s.seat === state.you) return;
+        send({ t: "chooseSeat", seat: s.seat });
+      });
+    } else {
+      const youTag = s.seat === state.you ? " (You)" : "";
+      const crown = s.seat === m.hostSeat ? " 👑" : "";
+      el.innerHTML = `<span class="ls-dot"></span><span class="ls-name">${escapeHtml(s.name)}${youTag}${crown}</span>`;
+    }
+    wrap.appendChild(el);
+  });
+}
+
+// Minimal HTML escape for seat/player names rendered into the lobby.
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 // ---------- lead-selection ceremony (spec §2.4, visible) ----------
@@ -671,7 +698,9 @@ function showChatPanel(show) {
 }
 
 function onMatchEnd(m) {
-  disconnectVoice(); // tear down LiveKit audio on match end (server also emits voiceEnd)
+  // NOTE: voice is intentionally NOT torn down here. It persists from the match
+  // through this end screen and into the post-match lobby so a party keeps
+  // talking between games. Voice drops only when a player Leaves (closes the WS).
   stopTurnCountdown(); // stop the decorative turn-timer ring
   state.activeSeat = -1;
   const me = m.seats.find((s) => s.seat === state.you);
@@ -705,6 +734,13 @@ function onMatchEnd(m) {
     bd.appendChild(row);
   });
   showScreen("end-screen");
+  // "Play Again" is host-gated: relabel the button so non-hosts know they're
+  // waiting. The host's click sends playAgain; a non-host's click does nothing
+  // harmful (the server ignores it) but we disable it to avoid confusion.
+  const rematchBtn = $("rematch-btn");
+  const isHost = state.you === state.hostSeat;
+  rematchBtn.textContent = isHost ? "Play Again" : "Waiting for host…";
+  rematchBtn.disabled = !isHost;
   // The match is over — clear the in-progress game/ceremony state so a
   // subsequent match (via rematch or leave→new game) starts from a clean slate.
   resetMatchState();
@@ -1159,14 +1195,31 @@ $("game-leave-btn").addEventListener("click", () => {
   showScreen("join-screen");
 });
 $("rematch-btn").addEventListener("click", () => {
-  disconnectVoice();
+  // "Play Again": keep the socket + voice open and ask the host to reset the room
+  // to LOBBY (party cohesion). The server's resetToLobby() re-broadcasts
+  // lobbyUpdate, which transitions us back to the lobby screen via onLobbyUpdate.
+  // Only the host's playAgain is honored server-side; non-hosts just wait.
   stopTurnCountdown();
-  resetMatchState();
-  if (state.ws) state.ws.close();
-  state.you = null; state.room = null;
-  showChatPanel(false);
-  showScreen("join-screen");
+  resetMatchState();            // clears game state but keeps ws/you/room/voice
+  if (state.hostSeat === state.you) {
+    send({ t: "playAgain" });
+  }
 });
+// End-screen "Leave" — drops voice + socket and returns to the menu. (Previously
+// the rematch button did this; now Play Again keeps the party together, so a
+// dedicated Leave is needed for someone who wants to quit the room.)
+const endLeaveBtn = $("end-leave-btn");
+if (endLeaveBtn) {
+  endLeaveBtn.addEventListener("click", () => {
+    disconnectVoice();
+    stopTurnCountdown();
+    resetMatchState();
+    if (state.ws) state.ws.close();
+    state.you = null; state.room = null;
+    showChatPanel(false);
+    showScreen("join-screen");
+  });
+}
 // Voice mic toggle (match-only; button is hidden until voice connects).
 $("voice-toggle").addEventListener("click", onVoiceButtonClick);
 // Right-click (or long-press on mobile via contextmenu) leaves voice entirely.

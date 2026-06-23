@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23
+> **Last updated:** 2026-06-23 (Task 7 — team selection + Play Again + party voice)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -10,7 +10,7 @@
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
 > automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
-> **Tests:** 89 passing (rules + auth + livekit + bot + match + debug); full suite ~1.1s (was a
+> **Tests:** 98 passing (rules + auth + livekit + bot + match + debug); full suite ~1.3s (was a
 > 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
@@ -212,6 +212,51 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
   `STATE changed: hand(0→18), leadSelectActive(true→false)` line — this is what makes
   cross-match stale-state races obvious.
 
+### ✅ Team selection + Play Again + party voice (Task 7)
+The lobby is no longer a passive waiting list — players pick their seat, and a
+finished match flows straight into a re-lobby instead of dumping everyone back
+to the main menu. Three coupled changes:
+
+- **10-seat clickable table map (lobby):** seats render around an oval (seat 0
+  at top, clockwise), color-coded by team (even=A blue, odd=B red, matching
+  `teamForSeat`). Open (bot) seats are dashed + clickable to claim; occupied
+  seats show the name, 👑 host, and a gold ring on your own seat. Positions are
+  trig-computed inline (no per-seat CSS classes). Mobile falls back to a 2-col
+  grid so 10 chips don't overlap.
+- **`chooseSeat` (server + client):** new LOBBY-only message lets a player move
+  to any open bot seat. `GameRoom.chooseSeat()` reverts the old seat to a bot,
+  moves the host crown if the host moves, and is naturally 5-per-team capped
+  (only 5 seats exist per team). Replaces the old `nextOpenSeat` auto-balance as
+  the seat-assignment path for players who want to choose.
+- **Reliable lobby seat identity (`yourSeat`):** `broadcastLobby()` now sends
+  each socket its own seat index first, so the client knows "you" without the
+  old fragile name-match heuristic. The `findMySeat()` hack is gone.
+- **Stay-in-lobby / Play Again (`resetToLobby` + `playAgain`):** a finished
+  match no longer destroys the room. The host's "Play Again" calls
+  `GameRoom.resetToLobby()` — zeros score/hands/captures/timers, resets per-seat
+  match state, keeps humans seated, returns to `LOBBY`, and re-broadcasts the
+  lobby so everyone flows back to the seat map together. Non-hosts see a
+  "Waiting for host…" disabled button. Quick-match rooms re-arm the 20s fill
+  timer; private rooms wait for the host's Start. The end screen gets a dedicated
+  **Leave** button (previously the rematch button *was* the leave path).
+- **Party voice (persists through match-end):** `endMatch()` no longer
+  broadcasts `voiceEnd`, and the client no longer calls `disconnectVoice()` on
+  match end — so the same `mm_{roomId}` LiveKit room carries audio from the
+  match through the end screen and into the post-match lobby. Voice drops only
+  when a player explicitly Leaves. The `voiceEnd` message + client case are
+  removed entirely (dead code). `voiceToggle` relay now allows every non-dealing
+  state (so mute works on the end screen too).
+- **Host reassignment on disconnect:** if the host leaves at any time, the
+  lowest-numbered connected human is promoted — previously the host was never
+  reassigned, which stranded a room (directly relevant since Play Again is
+  host-gated).
+- **Cleanup reaper change:** a `FINISHED` room is now reaped only once no humans
+  remain connected (was: reaped ~10s after finish regardless) — keeps the party
+  together on the end screen. Empty-`LOBBY` behavior unchanged.
+- **Tests:** 9 new (chooseSeat claim/occupied/outside-LOBBY/host-move/team-cap/
+  yourSeat; host reassign; resetToLobby zeros + rejects). Existing `voiceEnd`
+  assertion updated to the new "voice persists" contract. **98/98 pass.**
+
 ### ✅ Deployment infrastructure
 - **`Dockerfile`**: containerizes the app; runs `npm ci` + `prisma generate` + `migrate deploy`.
 - **`deploy/docker-compose.yml`**: 6 services in one shared stack — `app` + `staging-app`
@@ -373,23 +418,15 @@ d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [stag
 
 ## 7. Roadmap — what's next
 
-### 🔜 Immediate — deferred from the last batch (Task 7)
-These were scoped and planned but deferred to a focused session (largest/riskiest change —
-touches the seat/team model and the room lifecycle):
+### 🔜 Immediate — next up
+Task 7 (team selection + Play Again + party voice) has shipped (see §2). The next
+candidate work items:
 
-- **Team selection (pick a seat)**: today teams are fixed by seat index (`seat % 2`,
-  `teamForSeat()` in `shared/rules.js`, assigned in `makeSeats()`, never reassigned).
-  Planned: a clickable 10-seat table map in the lobby; `chooseSeat(seatIdx)` server
-  method that flips a free bot seat to human (rejects if team has 5 humans). Changes
-  `addHuman`/`nextOpenSeat` signatures + a new `chooseSeat` message handler.
-- **Stay-in-lobby after match end ("Play Again")**: today `endMatch()` sets FINISHED
-  and the cleanup interval deletes the room in 10s; the client's `#rematch-btn` closes
-  the socket and returns to the main menu. Planned: a `resetToLobby()` method (zeros
-  score/hands/capturedTens/etc., sets LOBBY, keeps humans seated), a `playAgain` host
-  message, and the client's `#rematch-btn` sends `playAgain` instead of closing the WS.
-- **Party cohesion**: falls out of the above for free (same room code, same players,
-  voice persists across matches). At match-end, drop the `voiceEnd` broadcast so voice
-  carries into the post-match lobby.
+- **QA + promote Task 7 to `live`:** it's on `staging` (auto-deploys). Eyeball the
+  seat map, a full Play Again cycle, and party voice on `staging.mindikot.com`
+  before fast-forwarding to `live`.
+- **Mobile/touch polish** for the lobby seat-map (the oval→grid fallback works, but
+  tap targets + the claim interaction want a real-device pass).
 
 ### Account-system phases (DB foundation is in place)
 Phase 1 (auth) is done; these are additive:
@@ -418,13 +455,13 @@ Phase 1 (auth) is done; these are additive:
   README was written with the correct 20s; the RULEBOOK itself needs the fix.
 - **Speaking-activity indicators (VAD)**: the per-seat mic glyphs were removed (clutter);
   if "who is talking" is wanted, it needs LiveKit speaking events — a separate feature.
-- **Mobile/touch polish** for the lobby seat-map UI (ships with Task 7).
 
 > ✅ **Bot unit tests** — shipped (`test/bot.test.js`, 13 cases).
 > ✅ **Interactive tutorial** — shipped (see §2).
 > ✅ **Captured-10s tracker (per-team panels)** — shipped (see §2).
 > ✅ **Opt-in / all-player / lobby voice** — shipped (see §2).
 > ✅ **Staging environment + auto-deploy CI** — shipped (see §2).
+> ✅ **Task 7: team selection (10-seat table map) + Play Again + party voice** — shipped (see §2).
 
 ---
 
@@ -438,8 +475,8 @@ Phase 1 (auth) is done; these are additive:
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.
-- **Task 7 deferred** (team selection + party/lobby flow) — see §7. This is the
-  next major work item.
+- **Task 7 (team selection + Play Again + party voice)** shipped on `staging`;
+  pending QA + promotion to `live` (see §7).
 - **OAuth, stats, XP, friends, leaderboard** — all deferred to roadmap phases.
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device

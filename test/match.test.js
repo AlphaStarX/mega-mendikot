@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { GameRoom } from "../server/game-room.js";
-import { TOTAL_TENS, WIN_TENS } from "../shared/rules.js";
+import { TOTAL_TENS, WIN_TENS, PLAYERS, teamForSeat } from "../shared/rules.js";
 
 const realSetTimeout = global.setTimeout;
 const realSetInterval = global.setInterval;
@@ -182,7 +182,7 @@ test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async
   }
 });
 
-test("with voice configured, connected humans get all-player tokens on start and voiceEnd on end", async () => {
+test("with voice configured, connected humans get all-player tokens on start; voice is NOT torn down at end (persists for Play Again)", async () => {
   const restore = fastTimers();
   const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
   process.env.LIVEKIT_API_KEY = "key-test";
@@ -208,7 +208,9 @@ test("with voice configured, connected humans get all-player tokens on start and
 
     await waitFor(() => room.matchState === "FINISHED", { msg: "voice match to finish" });
     assert.equal(room.matchState, "FINISHED", "match ended");
-    assert.ok(ws._sent.some((m) => m.t === "voiceEnd"), "voiceEnd broadcast at match end");
+    // Voice now persists through match-end into the post-match lobby (party
+    // cohesion / Play Again), so the server must NOT broadcast voiceEnd.
+    assert.equal(ws._sent.some((m) => m.t === "voiceEnd"), false, "no voiceEnd — voice persists for Play Again");
   } finally {
     room.clearTimers();
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
@@ -241,4 +243,173 @@ test("opposing-team humans share the same voice room (all-player voice)", async 
     restore();
   }
 });
+
+// ---------- Task 7: team selection (chooseSeat) ----------
+// A capturing ws is reused above, but chooseSeat tests are synchronous LOBBY
+// operations (no timers), so plain stubs suffice.
+function stubWs(sessionId) {
+  return { readyState: 1, send: () => {}, sessionId };
+}
+
+test("chooseSeat: an unseated human claims an open bot seat", () => {
+  const room = new GameRoom("CS1");
+  try {
+    const ws = stubWs("s1");
+    // addHuman seats the first human via the team-balancing nextOpenSeat logic.
+    const firstSeat = room.addHuman(ws, "s1", "Ann");
+    assert.notEqual(firstSeat, -1);
+    // Now explicitly choose a different open seat (e.g. seat 5, opposite team).
+    const next = room.chooseSeat(5, "s1", "Ann", ws);
+    assert.equal(next, 5, "moved to chosen seat");
+    assert.ok(room.seats[5].isHuman, "seat 5 now human");
+    assert.equal(room.seats[5].sessionId, "s1");
+    assert.equal(room.seats[firstSeat].isBot, true, "old seat reverted to bot");
+    assert.equal(room.seats[firstSeat].isHuman, false);
+  } finally {
+    room.clearTimers();
+  }
+});
+
+test("chooseSeat: rejects an already-occupied (human) seat", () => {
+  const room = new GameRoom("CS2");
+  try {
+    const wsA = stubWs("sA"), wsB = stubWs("sB");
+    room.addHuman(wsA, "sA", "Ann");      // seat 0 (team A) by balance
+    room.addHuman(wsB, "sB", "Bob");      // seat 1 (team B)
+    // Bob (sB) tries to take seat 0, which Ann occupies.
+    const r = room.chooseSeat(0, "sB", "Bob", wsB);
+    assert.equal(r, -1, "can't steal an occupied seat");
+    assert.equal(room.seats[0].sessionId, "sA", "seat 0 still Ann's");
+  } finally {
+    room.clearTimers();
+  }
+});
+
+test("chooseSeat: rejects outside LOBBY", () => {
+  const restore = fastTimers();
+  const room = new GameRoom("CS3");
+  try {
+    const ws = stubWs("s1");
+    room.addHuman(ws, "s1", "Ann");
+    room.start();
+    // matchState is now LEAD_SELECT; choosing a seat must be rejected.
+    const r = room.chooseSeat(2, "s1", "Ann", ws);
+    assert.equal(r, -1, "can't choose a seat once the match has started");
+  } finally {
+    room.clearTimers();
+    restore();
+  }
+});
+
+test("chooseSeat: moving the host moves the host crown", () => {
+  const room = new GameRoom("CS4");
+  try {
+    const ws = stubWs("s1");
+    const hostSeat = room.addHuman(ws, "s1", "Ann"); // first human => host
+    assert.equal(room.hostSeat, hostSeat);
+    const next = room.chooseSeat(6, "s1", "Ann", ws); // host moves to seat 6
+    assert.notEqual(next, -1);
+    assert.equal(room.hostSeat, next, "host crown followed the move");
+  } finally {
+    room.clearTimers();
+  }
+});
+
+test("chooseSeat: 5-per-team cap holds — can't take a seat on a full team", () => {
+  const room = new GameRoom("CS5");
+  try {
+    // Fill all 5 Team A seats (even indices 0,2,4,6,8) with humans.
+    const teamASeats = [];
+    for (let i = 0; i < PLAYERS; i++) if (teamForSeat(i) === "A") teamASeats.push(i);
+    for (const seat of teamASeats) {
+      const ws = stubWs(`h${seat}`);
+      room.chooseSeat(seat, `h${seat}`, `P${seat}`, ws);
+    }
+    assert.equal(teamASeats.length, 5, "sanity: exactly 5 Team A seats exist");
+    // All Team A seats are now human; every Team A seat should reject chooseSeat.
+    const extra = stubWs("extra");
+    for (const seat of teamASeats) {
+      assert.equal(room.chooseSeat(seat, "extra", "Extra", extra), -1,
+        `Team A seat ${seat} is occupied and rejects chooseSeat`);
+    }
+  } finally {
+    room.clearTimers();
+  }
+});
+
+test("chooseSeat: broadcasts yourSeat per socket via broadcastLobby", () => {
+  const room = new GameRoom("CS6");
+  try {
+    const sent1 = [], sent2 = [];
+    const ws1 = { readyState: 1, send: (d) => sent1.push(JSON.parse(d)), sessionId: "s1" };
+    const ws2 = { readyState: 1, send: (d) => sent2.push(JSON.parse(d)), sessionId: "s2" };
+    room.addHuman(ws1, "s1", "Ann");
+    room.addHuman(ws2, "s2", "Bob");
+    room.broadcastLobby();
+    // Each socket gets its own yourSeat message with its seat index.
+    assert.ok(sent1.some((m) => m.t === "yourSeat"), "ws1 got yourSeat");
+    assert.ok(sent2.some((m) => m.t === "yourSeat"), "ws2 got yourSeat");
+  } finally {
+    room.clearTimers();
+  }
+});
+
+// ---------- Task 7: host reassignment on disconnect ----------
+test("onHumanDisconnect: host leaving promotes the next connected human", () => {
+  const room = new GameRoom("HD1");
+  try {
+    const ws1 = stubWs("s1"), ws2 = stubWs("s2");
+    const h1 = room.addHuman(ws1, "s1", "Ann"); // first => host
+    const h2 = room.addHuman(ws2, "s2", "Bob");
+    assert.equal(room.hostSeat, h1);
+    room.onHumanDisconnect(h1);
+    assert.equal(room.hostSeat, h2, "host passed to Bob");
+    // Now the last human leaves -> host becomes null (no humans left).
+    room.onHumanDisconnect(h2);
+    assert.equal(room.hostSeat, null, "no host when nobody is connected");
+  } finally {
+    room.clearTimers();
+  }
+});
+
+// ---------- Task 7: resetToLobby (Play Again) ----------
+test("resetToLobby: zeros match state and returns to LOBBY, keeping humans seated", async () => {
+  const restore = fastTimers();
+  const room = new GameRoom("RT1");
+  try {
+    const ws = stubWs("s1");
+    const seat = room.addHuman(ws, "s1", "Ann");
+    room.start();
+    await waitFor(() => room.matchState === "FINISHED", { msg: "RT1 match to finish" });
+    assert.equal(room.matchState, "FINISHED");
+    // Match produced some score / captures.
+    assert.ok(room.score.A + room.score.B >= 0);
+    const ok = room.resetToLobby();
+    assert.equal(ok, true, "resetToLobby succeeded");
+    assert.equal(room.matchState, "LOBBY", "back in LOBBY");
+    assert.deepEqual(room.score, { A: 0, B: 0 }, "score zeroed");
+    assert.deepEqual(room.capturedTens, { A: [], B: [] }, "capturedTens cleared");
+    assert.equal(room.hands, null, "hands cleared");
+    // The human stays seated — identity preserved for the next game.
+    assert.equal(room.seats[seat].isHuman, true, "human still seated");
+    assert.equal(room.seats[seat].sessionId, "s1");
+    assert.equal(room.seats[seat].tens, 0, "per-seat tens reset");
+    assert.equal(room.seats[seat].hand.length, 0, "per-seat hand cleared");
+  } finally {
+    room.clearTimers();
+    restore();
+  }
+});
+
+test("resetToLobby: rejects when not FINISHED", () => {
+  const room = new GameRoom("RT2");
+  try {
+    // A fresh room is in LOBBY — resetToLobby must be a no-op.
+    assert.equal(room.resetToLobby(), false);
+    assert.equal(room.matchState, "LOBBY", "still LOBBY, untouched");
+  } finally {
+    room.clearTimers();
+  }
+});
+
 
