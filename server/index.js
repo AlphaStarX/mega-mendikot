@@ -19,6 +19,7 @@ import {
 } from "./auth.js";
 import { getDb, closeDb } from "./db.js";
 import { debugAllowed } from "./debug-gate.js";
+import { computeLeaderboardRows, LEADERBOARD_MAX_ROWS } from "./leaderboard.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -325,6 +326,23 @@ function handleMessage(ws, msg) {
           .catch((e) => { console.error("getStats error:", e); send(ws, { t: "stats", stats: null }); });
       } else {
         send(ws, { t: "stats", stats: null });
+      }
+      break;
+    case "getLeaderboard":
+      // Public leaderboard (top players by wins). No auth required — anyone,
+      // including guests, can view. Reads only displayName + stats (never
+      // emails/ids). Fail-soft to null if accounts aren't configured.
+      {
+        const db = getDb();
+        if (!db) { send(ws, { t: "leaderboard", rows: null }); break; }
+        db.user.findMany({
+          where: { matchesPlayed: { gt: 0 } },
+          orderBy: { wins: "desc" },
+          take: LEADERBOARD_MAX_ROWS,
+          select: { id: true, displayName: true, wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true },
+        })
+          .then((users) => send(ws, { t: "leaderboard", rows: computeLeaderboardRows(users) }))
+          .catch((e) => { console.error("getLeaderboard error:", e); send(ws, { t: "leaderboard", rows: null }); });
       }
       break;
     case "ping": send(ws, { t: "pong" }); break;

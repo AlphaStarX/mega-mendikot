@@ -92,6 +92,8 @@ const state = {
   authPending: null,   // deferred join waiting for auth to resolve
   // --- player stats (Phase 2) ---
   stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
+  // --- leaderboard (Phase 3) ---
+  leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
   // lobby
   room: null,
   hostSeat: null,
@@ -213,6 +215,7 @@ function handle(m) {
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
     case "stats": onStats(m); break;
+    case "leaderboard": onLeaderboard(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
     case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
@@ -289,6 +292,41 @@ function onStats(m) {
   // If the profile screen is visible, re-render it with the fresh numbers.
   const screen = $("profile-screen");
   if (screen && !screen.classList.contains("hidden")) renderProfile();
+}
+
+// ---------- leaderboard (Phase 3) ----------
+// Leaderboard rows arrive from the server (getLeaderboard reply). Re-render the
+// screen if it's currently visible.
+function onLeaderboard(m) {
+  state.leaderboard = Array.isArray(m.rows) ? m.rows : null;
+  const screen = $("leaderboard-screen");
+  if (screen && !screen.classList.contains("hidden")) renderLeaderboard();
+}
+
+// Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
+// empty (no one has played yet), and highlights the current user's row.
+function renderLeaderboard() {
+  const wrap = $("leaderboard-rows");
+  if (!wrap) return;
+  if (state.leaderboard === null) {
+    wrap.innerHTML = `<div class="lb-empty">Leaderboard isn't available right now.</div>`;
+    return;
+  }
+  if (!state.leaderboard.length) {
+    wrap.innerHTML = `<div class="lb-empty">No ranked players yet — be the first! 🏆</div>`;
+    return;
+  }
+  wrap.innerHTML = state.leaderboard.map((r) => {
+    const isMe = state.authenticated && state.userId && r.id === state.userId;
+    const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "";
+    const wr = r.winRate !== null && r.winRate !== undefined ? `<span class="lb-wr">${r.winRate}%</span>` : "";
+    return `<div class="lb-row${isMe ? " me" : ""}">` +
+      `<span class="lb-rank">${medal || r.rank}</span>` +
+      `<span class="lb-name">${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
+      `<span class="lb-record"><b>${r.wins}</b>W · ${r.losses}L · ${r.draws}D ${wr}</span>` +
+      `<span class="lb-matches">${r.matchesPlayed} games</span>` +
+    `</div>`;
+  }).join("");
 }
 
 // Send a signup request over an open socket. Opens one if needed.
@@ -768,7 +806,7 @@ function onMatchEnd(m) {
 
 // ---------- rendering ----------
 function showScreen(id) {
-  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen"].forEach((s) => $(s).classList.add("hidden"));
+  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen", "leaderboard-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
   // The in-match "?" help button is only relevant while playing.
   const help = $("game-help-btn");
@@ -1373,6 +1411,30 @@ if (profileBtn) {
 const profileBackBtn = $("profile-back-btn");
 if (profileBackBtn) {
   profileBackBtn.addEventListener("click", () => showScreen("join-screen"));
+}
+
+// --- Leaderboard (Phase 3) ---
+// Public — anyone can view. Fetch the latest top players then show the screen.
+const leaderboardBtn = $("leaderboard-btn");
+if (leaderboardBtn) {
+  leaderboardBtn.addEventListener("click", () => {
+    send({ t: "getLeaderboard" });
+    renderLeaderboard();
+    showScreen("leaderboard-screen");
+  });
+}
+const leaderboardBackBtn = $("leaderboard-back-btn");
+if (leaderboardBackBtn) {
+  leaderboardBackBtn.addEventListener("click", () => showScreen("join-screen"));
+}
+// Cross-link from the profile screen: "View Leaderboard".
+const profileLeaderboardBtn = $("profile-leaderboard-btn");
+if (profileLeaderboardBtn) {
+  profileLeaderboardBtn.addEventListener("click", () => {
+    send({ t: "getLeaderboard" });
+    renderLeaderboard();
+    showScreen("leaderboard-screen");
+  });
 }
 
 // --- Auth screen wiring (Phase 1) ---

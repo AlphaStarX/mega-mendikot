@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (Phase 2 stats + profile; Task 7 lobby)
+> **Last updated:** 2026-06-23 (Phase 3 leaderboard; Phase 2 stats; Task 7 lobby)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -10,7 +10,7 @@
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
 > automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
-> **Tests:** 103 passing (rules + auth + livekit + bot + match + debug + stats); full suite ~1.1s (was a
+> **Tests:** 113 passing (rules + auth + livekit + bot + match + debug + stats + leaderboard); full suite ~1.1s (was a
 > 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
@@ -144,6 +144,30 @@ dedicated Profile screen. Builds directly on Phase 1's `User` table.
   stats" prompt with a login shortcut.
 - **Tests:** +5 (classifySeats win/loss, draw, guest+bot skip, empty; recordStats
   fail-soft no-DB no-throw). **103/103 pass.**
+
+### ✅ Leaderboard (Phase 3)
+A public leaderboard screen showing the top players by total wins. Builds on
+Phase 2's stats columns — no new data model, one read query + one screen.
+
+- **Public access** — anyone can view, including guests (maximizes engagement;
+  the query reads only `displayName` + stats, never emails/ids). A `getLeaderboard`
+  message returns the top 50 (capped, on-demand — never on the hot match path).
+- **Ranking by total wins** descending; ties broken by fewer matches played (a
+  light skill tiebreak: reaching N wins in fewer games ranks higher). A
+  min-matches floor (1) filters fresh 0-0-0 signups off the board.
+- **`computeLeaderboardRows`** (`server/leaderboard.js`): pure function of raw
+  User rows — sorts, assigns 1-based ranks, computes winRate (wins over decisive
+  games, draws excluded, matching the profile screen). DB-free and unit-tested
+  directly (10 cases).
+- **Index-backed**: `@@index([wins])` added to the schema (migration
+  `20260624000000_add_wins_index`) so the `ORDER BY wins DESC LIMIT 50` is
+  index-backed as the player base grows.
+- **Dedicated screen** (`#leaderboard-screen`): ranked rows (🥇🥈🥉 for top 3),
+  W/L/D + win-rate per player, games played. Highlights the current user's row
+  in gold + "(You)". Reached via "🏆 Leaderboard" on the main menu (always
+  visible) and cross-linked from the profile screen ("View Leaderboard").
+- **Tests:** +10 (`test/leaderboard.test.js`): sort, rank, tiebreak, winRate
+  (incl. null on all-draws), floor filter, max cap, empty/defensive. **113/113 pass.**
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -459,12 +483,12 @@ candidate work items:
   tap targets + the claim interaction want a real-device pass).
 
 ### Account-system phases (DB foundation is in place)
-Phases 1–2 are done; these are additive:
+Phases 1–3 are done; these are additive:
 
 | Phase | Feature | Effort |
 |---|---|---|
 | **2** ✅ | ~~Win/loss stats + profile screen~~ — shipped (aggregates only; per-match history is a later phase) | — |
-| **3** | Leaderboard (top N by wins/rating) | Small |
+| **3** ✅ | ~~Leaderboard (top N by wins)~~ — shipped | — |
 | **4** | Player IDs (shareable), avatars, country flags | Medium |
 | **5** | XP system + player levels | Medium |
 | **6** | Friends list (add by ID, invite to room) | Medium-large |
@@ -506,7 +530,7 @@ Phases 1–2 are done; these are additive:
   transient "can't provide a secure connection" until it's issued. One-time.
 - **Task 7 (team selection + Play Again + party voice)** shipped on `staging`;
   pending QA + promotion to `live` (see §7).
-- **OAuth, XP, friends, leaderboard, per-match history** — all deferred to roadmap phases.
+- **OAuth, XP, friends, per-match history** — all deferred to roadmap phases.
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device
   reconnect.

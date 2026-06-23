@@ -34,4 +34,5 @@ model User {
   //   xp, level, avatarUrl, country, playerId
 
   @@index([email])
+  @@index([wins])   // Phase 3 — backs the leaderboard's ORDER BY wins DESC
 }
