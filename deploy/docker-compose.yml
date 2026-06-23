@@ -46,6 +46,60 @@ services:
     # Not published directly — Caddy fronts it on 443. Keeping it internal-only
     # means the game is only reachable over TLS via the reverse proxy.
 
+  # --- Staging preview (the `staging` branch) -------------------------------
+  # Same app image, separate source checkout (~/mega-mindikot-staging on the box,
+  # branch `staging`) and its OWN throwaway Postgres (staging-db). Fronted by
+  # Caddy on staging.<domain> — see Caddyfile. Pre-merge QA only; fully isolated
+  # from prod (app:3000 / db / pg_data are untouched by a staging deploy).
+  staging-app:
+    build:
+      # Runs the `staging` branch. On the box this is a second checkout kept in
+      # a sibling dir so prod's ~/mega-mindikot (branch `live`) is unaffected.
+      context: ../mega-mindikot-staging
+      dockerfile: Dockerfile
+    container_name: mm-staging-app
+    restart: unless-stopped
+    depends_on:
+      staging-db:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      FILL_TIMER_MS: "20000"
+      # Staging's OWN database — separate container, throwaway data. Never
+      # touches prod's `db` service or `pg_data` volume.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@staging-db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      # Reuse prod's LiveKit creds — tokens are stateless and the SFU is shared.
+      # Room names are per-process random (mm_{roomId}); collision with prod is
+      # near-impossible and harmless if it occurs.
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      LIVEKIT_URL: ${LIVEKIT_URL}
+      # Optional: arm the debug panel on staging behind a key (?debug=1&key=...).
+      # Empty = loopback only (per debug-gate.js). See STAGING_DEBUG_KEY in .env.
+      DEBUG_KEY: ${STAGING_DEBUG_KEY:-}
+    networks:
+      - mm-net
+
+  staging-db:
+    image: postgres:16-alpine
+    container_name: mm-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg_data_staging:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - mm-net
+
   db:
     image: postgres:16-alpine
     container_name: mm-db
@@ -103,8 +157,10 @@ services:
     environment:
       PLAY_DOMAIN: ${PLAY_DOMAIN}
       VOICE_DOMAIN: ${VOICE_DOMAIN}
+      STAGING_DOMAIN: ${STAGING_DOMAIN}
     depends_on:
       - app
+      - staging-app
       - livekit
     networks:
       - mm-net
@@ -117,3 +173,4 @@ volumes:
   caddy_data:
   caddy_config:
   pg_data:
+  pg_data_staging:

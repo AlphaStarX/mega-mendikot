@@ -20,11 +20,14 @@ single OVHcloud VPS, with automatic TLS via Caddy. Scope: **app + voice + accoun
 ```
 OVHcloud VPS — Canada BHS / Beauharnois (Debian 13)
 ├── Caddy  (ports 80/443, automatic Let's Encrypt TLS)
-│     ├── play.<domain>   ─► app:3000          (HTTP + /ws WebSocket)
-│     └── voice.<domain>  ─► livekit:7880      (WSS signaling only)
-├── app: node server/index.js :3000            (the game server)
-├── db: postgres:16                            (accounts database)
-└── livekit: SFU + embedded TURN
+│     ├── play.<domain>    ─► app:3000          (HTTP + /ws WebSocket)
+│     ├── staging.<domain> ─► staging-app:3000  (staging preview, separate DB)
+│     └── voice.<domain>   ─► livekit:7880      (WSS signaling only)
+├── app: node server/index.js :3000            (prod game server)
+├── staging-app: node server/index.js :3000    (staging preview)
+├── db: postgres:16                            (prod accounts)
+├── staging-db: postgres:16                    (throwaway staging accounts)
+└── livekit: SFU + embedded TURN               (shared by app + staging-app)
         7880  TCP   signaling (fronted by Caddy)
         5349  TCP+UDP  TURN/TLS        ─┐
         50000-60000 UDP  WebRTC media  ─┴─ exposed DIRECTLY (not proxied)
@@ -61,6 +64,7 @@ there's usually nothing to change. Verify in Domain Management → `mindikot.com
 |---|---|---|---|
 | `A` | `play` | `<YOUR_VPS_IP>` | 600 |
 | `A` | `voice` | `<YOUR_VPS_IP>` | 600 |
+| `A` | `staging` | `<YOUR_VPS_IP>` | 600 |
 | `A` | `@` | `<YOUR_VPS_IP>` | 600 |
 
 The `@` record points the bare/apex domain (`mindikot.com`) at the VPS; Caddy
@@ -197,13 +201,14 @@ filters **ingress**, not egress.
     nano .env     # fill in the four REAL values below
     ```
     ```ini
-    PLAY_DOMAIN=play.mindikot.com
-    VOICE_DOMAIN=voice.mindikot.com
-    PUBLIC_IP=<vps-ip>
-    LIVEKIT_API_KEY=<the key from step 11>
-    LIVEKIT_API_SECRET=<the secret from step 11>
-    LIVEKIT_URL=wss://voice.mindikot.com
-    ```
+PLAY_DOMAIN=play.mindikot.com
+VOICE_DOMAIN=voice.mindikot.com
+STAGING_DOMAIN=staging.mindikot.com
+PUBLIC_IP=<vps-ip>
+LIVEKIT_API_KEY=<the key from step 11>
+LIVEKIT_API_SECRET=<the secret from step 11>
+LIVEKIT_URL=wss://voice.mindikot.com
+```
 13. Put the **same** `key` + `secret` into `livekit.yaml`, and your real voice domain:
     ```bash
     nano livekit.yaml
@@ -290,6 +295,82 @@ docker compose down
 - **Backups:** OVH includes a **daily backup of the previous 24h** (check your plan's
   inclusions). For longer retention, enable OVH's automated backups add-on in the
   control panel. Worth it once you have real players.
+
+---
+
+## Phase 10 — Staging environment (`staging.mindikot.com`)
+
+A permanent, always-on preview of the **`staging` branch**, isolated from production
+(`play.mindikot.com` → branch `live`). Use it to eyeball every change in a browser
+before merging to `live`. Staging runs **guest + accounts** against its **own throwaway
+Postgres** (separate container + volume), so signup/login/reconnect and DB-migration
+flows can be exercised without ever touching production accounts. Voice reuses prod's
+shared LiveKit SFU (tokens are stateless).
+
+**Layout on the box — two checkouts:**
+
+| Checkout | Branch | Build context for | Reached at |
+|---|---|---|---|
+| `~/mega-mindikot` | `live` | `app` (prod) | `play.mindikot.com` |
+| `~/mega-mindikot-staging` | `staging` | `staging-app` (preview) | `staging.mindikot.com` |
+
+Both live in a **single `docker-compose` stack** — they share Caddy (the only thing
+that can hold 80/443), the `mm-net` network, and the LiveKit SFU, but are otherwise
+fully isolated: `staging-app` cannot reach prod's `db` service or `pg_data` volume,
+and Caddy routes by hostname so a staging deploy or crash never reaches `play.*`.
+
+**Prerequisite:** a `staging` A record pointing at the VPS (added in Phase 0 above).
+Caddy auto-issues a cert for `staging.mindikot.com` on first request.
+
+### First-time setup (once the stack is already running)
+
+1. Clone a second checkout and switch it to `staging`:
+   ```bash
+   cd ~
+   git clone https://github.com/AlphaStarX/mega-mindikot.git mega-mindikot-staging
+   cd mega-mindikot-staging && git checkout staging
+   ```
+2. Make sure `~/mega-mindikot/deploy/.env` has `STAGING_DOMAIN=staging.mindikot.com`
+   (the `.env.example` template includes it). Optionally set `STAGING_DEBUG_KEY` to
+   arm the debug panel behind `?debug=1&key=...`.
+3. Bring up the staging services from the **prod** checkout's `deploy/` dir (that's
+   where the shared stack lives):
+   ```bash
+   cd ~/mega-mindikot/deploy
+   docker compose up -d --build staging-app
+   docker compose ps        # staging-app + staging-db: running
+   ```
+4. Open `https://staging.mindikot.com` → you should see the `staging` branch, valid TLS.
+
+### Deploy an update to staging (after a code change on the `staging` branch)
+
+```bash
+cd ~/mega-mindikot-staging && git pull
+cd ~/mega-mindikot/deploy && docker compose up -d --build staging-app
+```
+Visible at the staging URL within ~30s of rebuild. **Prod (`play.*`) is not touched.**
+
+### Deploy an update to prod (the existing flow, unchanged)
+
+```bash
+cd ~/mega-mindikot && git pull          # pull the change (now on `live`)
+cd deploy && docker compose up -d --build app
+```
+
+### Wipe staging accounts (reset the throwaway database)
+
+```bash
+cd ~/mega-mindikot/deploy
+docker compose rm -sf staging-db
+docker volume rm deploy_pg_data_staging      # adjust the `deploy_` prefix to your compose project name
+docker compose up -d --build staging-app     # staging-db recreates + re-runs migrations on boot
+```
+This destroys only staging's data — prod's `db` / `pg_data` are untouched.
+
+### Resource cost
+
+- +1 Node container (~60 MB) + +1 Postgres (~120 MB) ≈ **~180 MB extra RAM** at peak.
+- Comfortable on the 4 GB VPS-1 at launch scale; if concurrency grows, revisit.
 
 ---
 
