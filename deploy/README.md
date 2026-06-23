@@ -4,6 +4,11 @@ This is the **step-by-step runbook** for hosting the game + team voice (LiveKit)
 single OVHcloud VPS, with automatic TLS via Caddy. Scope: **app + voice + accounts**
 — Postgres/login is included (see "Next phase" at the bottom for stats/OAuth/etc.).
 
+> **Already deployed?** `docs/DEPLOYMENT.md` is the **day-to-day ops runbook**
+> (server details, ship-to-staging / promote-to-prod workflows, box-specific
+> caveats, troubleshooting). This file is the from-scratch provisioning guide;
+> start there for the existing production/staging servers.
+
 > **Domain:** `mindikot.com` (registered at Porkbun). Hostnames:
 > `play.mindikot.com` (game) and `voice.mindikot.com` (LiveKit SFU).
 >

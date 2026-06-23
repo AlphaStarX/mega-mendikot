@@ -1,0 +1,67 @@
+# Auto-deploy the `staging` branch to staging.mindikot.com on every push.
+#
+# Flow: push → run the test suite → if green, SSH into the box and rebuild the
+# `staging-app` container. A failing test prevents the deploy (staging stays on
+# the last-good commit). Prod (`live`) is NEVER touched by this workflow — the
+# promotion to live stays fully manual per docs/DEPLOYMENT.md §4.
+#
+# One-time setup (box + GitHub secrets): see docs/DEPLOYMENT.md §8.
+name: Deploy staging
+
+on:
+  push:
+    branches: [staging]
+
+# Minimal permissions. This workflow never pushes back to the repo; it only
+# reads the pushed code and SSHes out to the box.
+permissions:
+  contents: read
+
+concurrency:
+  # If two pushes land close together, cancel the older run and let the newest
+  # commit win. Avoids two concurrent rebuilds of staging-app on the box.
+  group: staging-deploy
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Run test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Rebuild staging-app on the box
+    needs: test # never deploy a red build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The exact two-line deploy from docs/DEPLOYMENT.md §2. Only touches the
+      # staging checkout + the staging-app service — prod (~/mega-mindikot,
+      # app, db) is untouched.
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          # Tighten host-key verification: fail loudly if the box's fingerprint
+          # ever changes (man-in-the-middle / IP repoint), rather than accepting
+          # any key on first connect.
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd ~/mega-mindikot-staging && git pull
+            cd ~/mega-mindikot/deploy && docker compose up -d --build staging-app

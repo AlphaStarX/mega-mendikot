@@ -107,6 +107,7 @@ function resetMatchState() {
   state.playedCards = [];
   state.score = { A: 0, B: 0 };
   state.tricksWon = { A: 0, B: 0 };
+  state.capturedTens = { A: [], B: [] }; // chip tracker — clear so a fresh match shows nothing captured
   state.trickNumber = 1;
   state.leadSuit = "";
   state.trumpSuit = "";
@@ -210,6 +211,7 @@ function handle(m) {
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
+    case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
     case "leadSelect": onLeadSelect(m); break;
     case "init": onInit(m); break;
@@ -223,7 +225,6 @@ function handle(m) {
     case "chat": onChat(m); break;
     case "voiceState": onVoiceState(m); break;
     case "lobbyVoice": offerVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken }); break;
-    case "voiceEnd": disconnectVoice(); break;
     case "error": showMsg(m.message); break;
   }
 }
@@ -305,7 +306,6 @@ function onLobbyUpdate(m) {
   state.room = m.room;
   state.hostSeat = m.hostSeat;
   state.seats = m.seats;
-  if (state.you === null) state.you = findMySeat(m.seats);
   showScreen("lobby-screen");
   $("lobby-code").textContent = m.room;
   const linkWrap = $("lobby-link-wrap");
@@ -315,29 +315,63 @@ function onLobbyUpdate(m) {
   } else {
     linkWrap.textContent = "Quick match — bots fill empty seats shortly.";
   }
-  // Render seats
-  const host = $("lobby-seats");
-  host.innerHTML = "";
-  m.seats.forEach((s) => {
-    const el = document.createElement("div");
-    const label = s.isBot ? "Waiting…" : `${s.name}${s.seat === state.you ? " (You)" : ""}${s.seat === m.hostSeat ? " 👑" : ""}`;
-    el.className = `lobby-seat team-${s.team.toLowerCase()}${s.isBot ? " empty" : ""}`;
-    el.innerHTML = `<span class="ls-dot"></span><span>${label}</span>`;
-    host.appendChild(el);
-  });
+  renderLobbySeats(m);
   // Host controls
   const isHost = state.you === m.hostSeat;
   $("lobby-start-btn").classList.toggle("hidden", !isHost);
   $("lobby-waiting").classList.toggle("hidden", isHost);
 }
 
-function findMySeat(seats) {
-  // We don't know our seat from lobby alone; match by nothing available yet.
-  // The server tells us via init.you once the game starts. For lobby display
-  // we approximate "you" by matching our name against seats.
-  const name = $("name-input").value.trim();
-  const me = seats.find((s) => !s.isBot && s.name === (name || "Player"));
-  return me ? me.seat : null;
+// Render the lobby as a 10-seat clickable table map. Seats are placed around an
+// oval (seat 0 at top, then clockwise). Even seats = Team A (blue), odd = Team B
+// (red), matching teamForSeat(). Each chip shows "Seat N" above a short label;
+// open (bot) seats are dashed + clickable to claim/move; your own seat is
+// gold-ringed; the host wears a 👑.
+function renderLobbySeats(m) {
+  const wrap = $("lobby-seats");
+  wrap.innerHTML = "";
+  m.seats.forEach((s) => {
+    const el = document.createElement("div");
+    // Seat i sits at angle (i / 10) of a full turn, starting at the top (-90°).
+    const angle = (s.seat / 10) * 2 * Math.PI - Math.PI / 2;
+    const radiusX = 43, radiusY = 40;            // % of the oval — pulled in so chips clear the rail
+    const left = 50 + radiusX * Math.cos(angle); // % across
+    const top = 50 + radiusY * Math.sin(angle);  // % down
+    el.className = `lobby-seat team-${s.team.toLowerCase()}`;
+    if (s.isBot) el.classList.add("open");
+    if (s.seat === state.you) el.classList.add("mine");
+    if (s.seat === m.hostSeat) el.classList.add("host");
+    el.style.left = `${left}%`;
+    el.style.top = `${top}%`;
+    el.setAttribute("data-seat", s.seat);
+    el.setAttribute("data-team", s.team);
+    const seatTag = `Seat ${s.seat + 1} · Team ${s.team}`;
+    if (s.isBot) {
+      // Open seat — clickable to claim/move here. (A team can't get a 6th human:
+      // all 5 of its seats would be human, so no open seat would render here.)
+      el.innerHTML = `<span class="ls-num">${seatTag}</span><span class="ls-name">＋ Empty</span>`;
+      el.title = `Click to take seat ${s.seat + 1} (Team ${s.team})`;
+      el.setAttribute("role", "button");
+      el.tabIndex = 0;
+      el.addEventListener("click", () => {
+        if (s.seat === state.you) return;
+        send({ t: "chooseSeat", seat: s.seat });
+      });
+    } else {
+      const crown = s.seat === m.hostSeat ? " 👑" : "";
+      const youTag = s.seat === state.you ? " (You)" : "";
+      el.innerHTML =
+        `<span class="ls-num">${seatTag}</span>` +
+        `<span class="ls-name">${escapeHtml(s.name)}${crown}${youTag}</span>`;
+    }
+    wrap.appendChild(el);
+  });
+}
+
+// Minimal HTML escape for seat/player names rendered into the lobby.
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 // ---------- lead-selection ceremony (spec §2.4, visible) ----------
@@ -670,7 +704,9 @@ function showChatPanel(show) {
 }
 
 function onMatchEnd(m) {
-  disconnectVoice(); // tear down LiveKit audio on match end (server also emits voiceEnd)
+  // NOTE: voice is intentionally NOT torn down here. It persists from the match
+  // through this end screen and into the post-match lobby so a party keeps
+  // talking between games. Voice drops only when a player Leaves (closes the WS).
   stopTurnCountdown(); // stop the decorative turn-timer ring
   state.activeSeat = -1;
   const me = m.seats.find((s) => s.seat === state.you);
@@ -704,6 +740,13 @@ function onMatchEnd(m) {
     bd.appendChild(row);
   });
   showScreen("end-screen");
+  // "Play Again" is host-gated: relabel the button so non-hosts know they're
+  // waiting. The host's click sends playAgain; a non-host's click does nothing
+  // harmful (the server ignores it) but we disable it to avoid confusion.
+  const rematchBtn = $("rematch-btn");
+  const isHost = state.you === state.hostSeat;
+  rematchBtn.textContent = isHost ? "Play Again" : "Waiting for host…";
+  rematchBtn.disabled = !isHost;
   // The match is over — clear the in-progress game/ceremony state so a
   // subsequent match (via rematch or leave→new game) starts from a clean slate.
   resetMatchState();
@@ -998,52 +1041,64 @@ function renderHud() {
   }
   const leadInfo = $("lead-info");
   const leadDisp = $("lead-display");
-  if (state.leadSuit && leadInfo && leadDisp) {
+  if (leadInfo && leadDisp) {
+    // Keep the Lead chip always visible — popping it in/out between tricks shifts
+    // the center layout and is jarring. Before a lead suit exists (start of a
+    // trick, before any card is played) show a muted "—" placeholder; once the
+    // first card lands, show its suit glyph in the suit's color.
     leadInfo.classList.remove("hidden");
-    leadDisp.textContent = SUIT_GLYPH[state.leadSuit];
-    leadDisp.style.color = SUIT_COLOR[state.leadSuit] === "red" ? "var(--red)" : "#fff";
-  } else if (leadInfo) {
-    leadInfo.classList.add("hidden");
+    if (state.leadSuit) {
+      leadDisp.textContent = SUIT_GLYPH[state.leadSuit];
+      leadDisp.style.color = SUIT_COLOR[state.leadSuit] === "red" ? "var(--red)" : "#fff";
+      leadDisp.style.opacity = "1";
+    } else {
+      leadDisp.textContent = "—";
+      leadDisp.style.color = "var(--muted)";
+      leadDisp.style.opacity = "0.6";
+    }
   }
   renderTensTracker();
   renderSeats();
 }
 
 // ---------- captured-10s chip tracker ----------
-// Renders 4 rows (one per suit) × 6 chips (6 copies of the 10 per suit in the
-// 192-card mega deck). Each chip is colored by the team that captured that copy,
-// or left neutral if uncaptured. The server is the source of truth
-// (state.capturedTens = { A: [{suit}], B: [{suit}] }), so reconnect mid-match
-// shows the correct history. 24 total chips = 24 Tens in the deck.
+// Two per-team trackers: one inside Team A's score panel, one inside Team B's.
+// Each shows the Tens THAT team has captured — 4 rows (one per suit) x 6 chips
+// (6 copies of the 10 per suit in the 192-card mega deck). Captured chips take
+// the team's own color (via .score.team-x .tens-chip.captured); empty = still
+// live. The server is the source of truth (state.capturedTens = { A:[{suit}],
+// B:[{suit}] }), so a mid-match reconnect shows the right history. A tracker
+// stays hidden until that team captures its first Ten.
 const SUITS_ORDER = ["SPADES", "HEARTS", "DIAMONDS", "CLUBS"];
 const COPIES_PER_SUIT = 6;
 
 function renderTensTracker() {
-  const wrap = $("tens-tracker");
-  if (!wrap) return;
-  // Build a per-suit → list-of-teams map from capturedTens. Order within a suit
-  // doesn't matter for display (chips are identical within a team+suit), so we
-  // just count how many of each suit each team took.
-  const counts = {};
-  for (const suit of SUITS_ORDER) counts[suit] = { A: 0, B: 0 };
-  for (const team of ["A", "B"]) {
+  // Render one team's tracker. `team` is "A" or "B".
+  function renderTeam(team, wrap) {
+    if (!wrap) return;
+    // Count how many of each suit THIS team has captured.
+    const perSuit = {};
+    for (const suit of SUITS_ORDER) perSuit[suit] = 0;
     for (const c of (state.capturedTens[team] || [])) {
-      if (counts[c.suit]) counts[c.suit][team]++;
+      if (perSuit[c.suit] !== undefined) perSuit[c.suit]++;
     }
+    // Always render the full 4x6 grid so both team panels stay the same height
+    // and the score bar stays vertically aligned. Empty chips (dashed) mark
+    // uncaptured copies; captured chips take the team color (via .captured).
+    wrap.classList.remove("hidden");
+    let html = "";
+    for (const suit of SUITS_ORDER) {
+      const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
+      // 6 chips: the captured ones (team color, set by CSS) then the rest empty.
+      let chips = "";
+      for (let i = 0; i < perSuit[suit]; i++) chips += `<span class="tens-chip captured" title="${team === "A" ? "Team A" : "Team B"}"></span>`;
+      for (let i = perSuit[suit]; i < COPIES_PER_SUIT; i++) chips += '<span class="tens-chip empty"></span>';
+      html += `<div class="tens-row"><span class="tens-suit-label" style="color:${color}">${SUIT_GLYPH[suit]}</span><span class="tens-chips">${chips}</span></div>`;
+    }
+    wrap.innerHTML = html;
   }
-  let html = "";
-  for (const suit of SUITS_ORDER) {
-    const color = SUIT_COLOR[suit] === "red" ? "var(--red)" : "#fff";
-    // Build 6 chips: fill A's first, then B's, rest empty. (The split between
-    // A and B for the same suit is shown as a run of A chips then a run of B
-    // chips — clear at a glance which team owns which copies.)
-    let chips = "";
-    for (let i = 0; i < counts[suit].A; i++) chips += '<span class="tens-chip a" title="Team A"></span>';
-    for (let i = 0; i < counts[suit].B; i++) chips += '<span class="tens-chip b" title="Team B"></span>';
-    for (let i = counts[suit].A + counts[suit].B; i < COPIES_PER_SUIT; i++) chips += '<span class="tens-chip empty"></span>';
-    html += `<div class="tens-row"><span class="tens-suit-label" style="color:${color}">${SUIT_GLYPH[suit]}</span><span class="tens-chips">${chips}</span></div>`;
-  }
-  wrap.innerHTML = html;
+  renderTeam("A", $("tens-tracker-a"));
+  renderTeam("B", $("tens-tracker-b"));
 }
 
 function updateMyTurn() {
@@ -1146,14 +1201,31 @@ $("game-leave-btn").addEventListener("click", () => {
   showScreen("join-screen");
 });
 $("rematch-btn").addEventListener("click", () => {
-  disconnectVoice();
+  // "Play Again": keep the socket + voice open and ask the host to reset the room
+  // to LOBBY (party cohesion). The server's resetToLobby() re-broadcasts
+  // lobbyUpdate, which transitions us back to the lobby screen via onLobbyUpdate.
+  // Only the host's playAgain is honored server-side; non-hosts just wait.
   stopTurnCountdown();
-  resetMatchState();
-  if (state.ws) state.ws.close();
-  state.you = null; state.room = null;
-  showChatPanel(false);
-  showScreen("join-screen");
+  resetMatchState();            // clears game state but keeps ws/you/room/voice
+  if (state.hostSeat === state.you) {
+    send({ t: "playAgain" });
+  }
 });
+// End-screen "Leave" — drops voice + socket and returns to the menu. (Previously
+// the rematch button did this; now Play Again keeps the party together, so a
+// dedicated Leave is needed for someone who wants to quit the room.)
+const endLeaveBtn = $("end-leave-btn");
+if (endLeaveBtn) {
+  endLeaveBtn.addEventListener("click", () => {
+    disconnectVoice();
+    stopTurnCountdown();
+    resetMatchState();
+    if (state.ws) state.ws.close();
+    state.you = null; state.room = null;
+    showChatPanel(false);
+    showScreen("join-screen");
+  });
+}
 // Voice mic toggle (match-only; button is hidden until voice connects).
 $("voice-toggle").addEventListener("click", onVoiceButtonClick);
 // Right-click (or long-press on mobile via contextmenu) leaves voice entirely.

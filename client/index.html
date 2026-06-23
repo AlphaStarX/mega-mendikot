@@ -55,6 +55,7 @@
       <div class="card-panel lobby-panel">
         <h2>Room <span id="lobby-code" class="room-code"></span></h2>
         <p id="lobby-link-wrap" class="hint"></p>
+        <p class="lobby-hint">Pick your seat · blue = Team A, red = Team B</p>
         <div id="lobby-seats" class="lobby-seats"></div>
         <div class="lobby-actions">
           <button id="lobby-start-btn" class="primary hidden">Start Game</button>
@@ -71,21 +72,22 @@
         <div class="score team-a">
           <div class="score-main"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-a">0</b></div>
+          <!-- Captured-10s for Team A: 4 suits x 6 chips each. Always rendered
+               so both team panels stay the same height (aligned score bar). -->
+          <div id="tens-tracker-a" class="tens-tracker"></div>
         </div>
         <div class="center-info">
           <div id="trump-info" class="trump-info">Trump: <b id="trump-display"></b></div>
-          <div id="lead-info" class="info-line hidden">Lead: <b id="lead-display">—</b></div>
+          <div id="lead-info" class="info-line">Lead: <b id="lead-display">—</b></div>
           <div id="trick-info">Trick: <b id="trick-num">1</b>/18</div>
         </div>
         <div class="score team-b">
           <div class="score-main">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-b">0</b></div>
+          <!-- Captured-10s for Team B: mirrors team-a. Always rendered for alignment. -->
+          <div id="tens-tracker-b" class="tens-tracker"></div>
         </div>
       </header>
-
-      <!-- Captured-10s tracker: 24 chips (4 suits × 6 copies), colored by team.
-           Persistent on-screen so players can plan which 10s are still live. -->
-      <div id="tens-tracker" class="tens-tracker"></div>
 
       <div class="hud-controls">
         <button id="game-help-btn" class="hud-btn help hidden" title="How to Play / Rules">?</button>
@@ -136,6 +138,7 @@
         <div class="menu-buttons" style="margin-top:14px">
           <button id="rematch-btn" class="primary">Play Again</button>
           <button id="end-help-btn">How to Play</button>
+          <button id="end-leave-btn" class="link-btn">Leave</button>
         </div>
       </div>
     </section>

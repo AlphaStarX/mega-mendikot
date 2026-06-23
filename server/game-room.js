@@ -127,6 +127,55 @@ export class GameRoom {
     return seatIdx;
   }
 
+  // Let a human move to (or claim) a specific open bot seat. Only valid in
+  // LOBBY. The target must currently be a bot — this both lets an unseated
+  // human claim their first seat AND lets a seated human switch seats. Switching
+  // reverts the old seat to a bot. Because only 5 seats exist per team, you can't
+  // join a team that already has 5 humans (all its seats are human, none are bot).
+  // `ws` is the player's socket; if the mover is the host, the hostSeat follows
+  // them to the new seat. Returns the new seat index, or -1 on rejection.
+  chooseSeat(targetIdx, sessionId, name, ws) {
+    if (this.matchState !== "LOBBY") return -1;
+    if (targetIdx < 0 || targetIdx >= PLAYERS) return -1;
+    const target = this.seats[targetIdx];
+    if (!target || !target.isBot) return -1; // can't take an occupied seat
+    // Find the seat this human currently owns (if any) so we can vacate it.
+    const oldIdx = this.seats.findIndex((s) => s.isHuman && s.sessionId === sessionId);
+    // Take the target seat (same field set as addHuman).
+    target.isBot = false;
+    target.isHuman = true;
+    target.sessionId = sessionId;
+    target.name = name || `Player ${targetIdx + 1}`;
+    target.isConnected = true;
+    target.ready = false;
+    target.isAfk = false;
+    target.timeouts = 0;
+    this.sockets[targetIdx] = ws;
+    // If the human was seated elsewhere, revert the old seat to a bot.
+    if (oldIdx !== -1 && oldIdx !== targetIdx) {
+      const old = this.seats[oldIdx];
+      old.isBot = true;
+      old.isHuman = false;
+      old.sessionId = null;
+      old.name = `Bot ${oldIdx + 1}`;
+      old.hand = [];
+      old.cardsLeft = 0;
+      old.tens = 0;
+      old.ready = false;
+      old.isConnected = true;
+      old.isAfk = false;
+      old.timeouts = 0;
+      old.disconnectAt = null;
+      delete this.sockets[oldIdx];
+      // First joiner is always host; if the host moved, the crown follows.
+      if (this.hostSeat === oldIdx) this.hostSeat = targetIdx;
+    } else if (this.hostSeat === null) {
+      this.hostSeat = targetIdx;
+    }
+    this.log.push(`Human chose seat ${targetIdx} (${target.name}).`);
+    return targetIdx;
+  }
+
   setReady(seatIdx, ready) {
     if (this.seats[seatIdx]) this.seats[seatIdx].ready = !!ready;
   }
@@ -250,9 +299,16 @@ export class GameRoom {
 
   handleTimeout() {
     const seat = this.seats[this.activeSeat];
+    if (!seat || !seat.hand || !seat.hand.length) return; // nothing to play
     seat.timeouts++;
     if (seat.timeouts >= 2) seat.isAfk = true;
     const card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
+    // autoPlayPick can return null/undefined if no legal pick is found; guard so a
+    // thrown error here doesn't poison the recurring turn-timer tick loop.
+    if (!card) {
+      this.log.push(`auto-play had no card for seat ${this.activeSeat}; skipping.`);
+      return;
+    }
     this.playCard(this.activeSeat, card.id, /*auto=*/true);
   }
 
@@ -435,10 +491,10 @@ export class GameRoom {
     this.clearBot();
     if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
     this.matchState = "FINISHED";
-    // Tell clients to tear down LiveKit voice before the match-end screen shows.
-    // Sent first so the client disconnects its audio while it still has the game
-    // view; voiceEnd is a no-op on clients that never connected.
-    if (voiceConfigured()) this.broadcast({ t: "voiceEnd" });
+    // NOTE: voice is intentionally NOT torn down here. Voice persists from the
+    // match through the end screen and into the post-match lobby ("Play Again"
+    // party cohesion) — clients stay connected to the same `mm_{roomId}` room.
+    // Voice is dropped only when a player explicitly Leaves (client closes the WS).
     // deadlock flag = the 12-12 tiebreak path was taken (score tied at match end).
     // Lets the client distinguish a normal 13-Ten win from a tricks-decided win.
     const deadlock = this.score.A === this.score.B;
@@ -458,6 +514,45 @@ export class GameRoom {
     }
   }
 
+  // Return a FINISHED room to LOBBY for "Play Again": zero all match state but
+  // keep humans seated (and bots as bots) so the party stays together. Triggered
+  // by the host's playAgain message. Returns true if the reset happened.
+  resetToLobby() {
+    if (this.matchState !== "FINISHED") return false;
+    // Zero match-wide state.
+    this.score = { A: 0, B: 0 };
+    this.tricksWon = { A: 0, B: 0 };
+    this.capturedTens = { A: [], B: [] };
+    this.trickNumber = 1;
+    this.leadSuit = "";
+    this.trumpSuit = "";
+    this.trumpDeclarerSeat = null;
+    this.playedCards = [];
+    this.activeSeat = -1;
+    this.leadSeat = -1;
+    this.hands = null;
+    this.kitty = [];
+    this.kittyIdx = 0;
+    // Clear lead-selection ceremony state.
+    this.leadSelectDeck = [];
+    this.leadSelectCards = {};
+    this.leadSelectRound = 0;
+    this.lastTrickWinnerTeam = null;
+    // Reset per-seat match state for every seat, but keep identity (human/bot,
+    // sessionId, name, connection) so the same players are seated for the next game.
+    for (const seat of this.seats) {
+      seat.hand = [];
+      seat.cardsLeft = 0;
+      seat.tens = 0;
+      seat.ready = false;
+    }
+    this.matchState = "LOBBY";
+    this.log.push("Match reset to LOBBY (Play Again).");
+    // Re-sync all clients back to the lobby screen (this also re-mints voice tokens).
+    this.broadcastLobby();
+    return true;
+  }
+
   // --- reconnection (spec §4.4) ---
   onHumanDisconnect(seatIdx) {
     const seat = this.seats[seatIdx];
@@ -465,6 +560,15 @@ export class GameRoom {
     seat.isConnected = false;
     seat.disconnectAt = Date.now();
     delete this.sockets[seatIdx];
+
+    // If the host left, promote the lowest-numbered still-connected human so the
+    // room always has a host who can Start / Play Again. Previously the host was
+    // never reassigned, which stranded a room once the host disconnected.
+    if (this.hostSeat === seatIdx) {
+      const nextHost = this.seats.find((s) => s.isHuman && s.isConnected);
+      this.hostSeat = nextHost ? nextHost.seat : null;
+      if (nextHost) this.log.push(`Host left; promoted seat ${nextHost.seat} to host.`);
+    }
 
     // Quick-match (non-private) rooms are throwaway: if no humans remain connected,
     // end the match immediately so the room gets cleaned up instead of playing out
@@ -509,6 +613,12 @@ export class GameRoom {
 
   // --- lobby state broadcast (sent to all humans in the room) ---
   broadcastLobby() {
+    // Tell each connected human their own seat first, so the client renders the
+    // seat map with a reliable `state.you` (the old name-match heuristic was
+    // fragile and couldn't show "You" correctly in the seat map).
+    for (const seatIdx in this.sockets) {
+      safeSend(this.sockets[seatIdx], { t: "yourSeat", seat: Number(seatIdx) });
+    }
     const lobby = {
       t: "lobbyUpdate",
       room: this.roomId,

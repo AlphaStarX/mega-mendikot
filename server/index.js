@@ -216,10 +216,13 @@ function scheduleFillStart(room) {
   }, FILL_TIMER_MS);
 }
 
-// Periodically clean up finished/idle rooms.
+// Periodically clean up idle rooms. A FINISHED room is reaped ONLY once no humans
+// remain connected — that keeps the party together on the end screen so the host
+// can hit "Play Again" (resetToLobby) instead of being dropped. Same for an empty
+// LOBBY. Mirrors how private LOBBY rooms already persist for friends.
 setInterval(() => {
   for (const [id, room] of rooms) {
-    if (room.matchState === "FINISHED" || (room.matchState === "LOBBY" && room.humanCount() === 0)) {
+    if ((room.matchState === "FINISHED" || room.matchState === "LOBBY") && room.humanCount() === 0) {
       room.clearTimers();
       if (room._fillHandle) { clearTimeout(room._fillHandle); room._fillHandle = null; }
       rooms.delete(id);
@@ -269,6 +272,29 @@ function handleMessage(ws, msg) {
         ws.room.start();
       }
       break;
+    case "chooseSeat":
+      // Player picks/moves to an open bot seat in the lobby. chooseSeat is
+      // LOBBY-only; it rejects occupied seats and moves the host crown if the
+      // host moves. The returned index may differ from ws.seat on a move.
+      if (ws.room && ws.seat !== null && ws.room.matchState === "LOBBY" &&
+          Number.isInteger(msg.seat)) {
+        const name = ws.userName || ws.name || "Player";
+        const next = ws.room.chooseSeat(msg.seat, ws.sessionId, name, ws);
+        if (next !== -1) {
+          ws.seat = next;
+          ws.room.broadcastLobby();
+        }
+      }
+      break;
+    case "playAgain":
+      // Host resets a FINISHED room to LOBBY, keeping everyone seated (party
+      // cohesion). Quick-match rooms re-arm the 20s fill/auto-start timer; private
+      // rooms wait for the host's Start button. resetToLobby re-broadcasts lobby.
+      if (ws.room && ws.seat === ws.room.hostSeat && ws.room.matchState === "FINISHED") {
+        ws.room.resetToLobby();
+        if (!ws.room.privateRoom) scheduleFillStart(ws.room);
+      }
+      break;
     case "chat":
       if (ws.room && ws.seat !== null) ws.room.onChatFromSeat(ws.seat, msg.text || "");
       break;
@@ -276,10 +302,11 @@ function handleMessage(ws, msg) {
       // Mute/unmute is client-local (the publishing client mutes its own mic
       // track); the server only relays the player-facing HUD state so others
       // see who's muted. Voice is all-player, so broadcast to everyone. Allowed
-      // in both PLAYING and LOBBY so pre-game / post-match lobby voice works.
-      // Bot/spectator toggles are ignored.
-      if (ws.room && ws.seat !== null &&
-          (ws.room.matchState === "PLAYING" || ws.room.matchState === "LOBBY")) {
+      // in every non-dealing state so pre-game / in-match / end-screen / post-match
+      // lobby voice all work (voice now persists through match-end). Bot toggles
+      // are ignored.
+      if (ws.room && ws.seat !== null && ws.room.matchState !== "DEALING" &&
+          ws.room.matchState !== "LEAD_SELECT") {
         ws.room.broadcast({
           t: "voiceState",
           seat: ws.seat,
