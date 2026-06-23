@@ -15,6 +15,11 @@ deploy/.env
 deploy/certs/
 certs/
 
+# SSH keys + secrets folders (deploy keys for CI live in GitHub Secrets, but
+# guard against a local key ever landing in the working tree)
+*.key
+secrets/
+
 # OS
 .DS_Store
 Thumbs.db

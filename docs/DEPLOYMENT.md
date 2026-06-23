@@ -62,18 +62,31 @@ OVHcloud VPS (158.69.49.43) — single docker-compose stack at ~/mega-mindikot/d
 
 ## 2. Day-to-day workflows
 
-### Ship a change to STAGING for QA
+### Ship a change to STAGING for QA — AUTOMATED
+Just push:
 ```bash
 # --- on your laptop ---
 git push origin staging
+```
+That's it. A GitHub Actions workflow (`.github/workflows/staging-deploy.yml`)
+runs the test suite; if green, it SSHes into the box and rebuilds `staging-app`.
+Watch it in the repo's **Actions** tab. Staging reflects the pushed commit at
+`https://staging.mindikot.com` within ~1–2 min. A failing test blocks the deploy
+(staging stays on the last-good commit) and shows a red ❌.
 
-# --- on the box (ssh debian@158.69.49.43) ---
+How it works: `push → test (npm test) → deploy (git pull + docker compose up
+--build staging-app)`. Prod (`play.*`) is never touched — the workflow only has
+the staging host/secret and only rebuilds `staging-app`.
+
+#### Manual override (when Actions is down, or to deploy a local-only fix)
+The same two-line command the workflow runs:
+```bash
+ssh debian@158.69.49.43
 cd ~/mega-mindikot-staging && git pull
 cd ~/mega-mindikot/deploy && docker compose up -d --build staging-app
 ```
-Visible at `https://staging.mindikot.com` within ~30s of rebuild. **Prod is untouched.**
 
-### Promote STAGING → PROD (after QA passes)
+### Promote STAGING → PROD (after QA passes) — always manual
 ```bash
 # --- on your laptop: merge staging into live and push ---
 git checkout live
@@ -84,6 +97,8 @@ git push origin live
 cd ~/mega-mindikot && git pull
 cd deploy && docker compose up -d --build app
 ```
+> **Never automated** — promotion to `live` is production and stays a deliberate
+> human step, per the ground rules in PROJECT_STATUS.md.
 
 ### Cherry-pick a shared-infra commit onto BOTH branches (rare)
 Deploy-file changes (compose, Caddyfile) are shared by both branches. If you land
@@ -230,12 +245,59 @@ specifically (Phase 10) was brought up on 2026-06-22:
 5. `docker compose up -d caddy` (recreated Caddy to pick up the staging site block
    + env var; ~5s prod blip; Let's Encrypt cert issued for `staging.*` in ~3s).
 
+### 8a. Auto-deploy setup (GitHub Actions → staging) — one-time
+
+Enables the §2 auto-deploy: push to `staging` → tests → rebuild on box. Do this
+once after the staging env is up. Needs **3 GitHub secrets** + **1 SSH key** on
+the box. The key is deploy-only and additive — your existing password login keeps
+working untouched.
+
+**On your laptop** (or anywhere with `ssh-keygen`):
+```bash
+ssh-keygen -t ed25519 -f staging_deploy -N "" -C "github-actions-staging-deploy"
+# → staging_deploy      (private — goes to GitHub)
+# → staging_deploy.pub  (public  — goes to the box)
+```
+
+**On the box** — add the public key so GitHub Actions can SSH in as `debian`:
+```bash
+ssh debian@158.69.49.43
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+cat >> ~/.ssh/authorized_keys < <(echo "<paste staging_deploy.pub contents>")
+chmod 600 ~/.ssh/authorized_keys
+```
+
+**In GitHub** — repo → Settings → Secrets and variables → Actions → New repository secret:
+| Secret name | Value |
+|---|---|
+| `STAGING_HOST` | `158.69.49.43` |
+| `STAGING_USER` | `debian` |
+| `STAGING_SSH_KEY` | the **private** key file contents (entire `staging_deploy`, incl. `-----BEGIN/END...-----` lines) |
+
+GitHub encrypts these at rest; they never appear in logs. The next `git push
+origin staging` triggers the workflow (`.github/workflows/staging-deploy.yml`)
+— watch it in the repo's Actions tab.
+
+**Optional hardening (later):** to lock the deploy key to *only* the two deploy
+commands, prefix its `authorized_keys` line with a forced command:
+```
+command="cd ~/mega-mindikot-staging && git pull && cd ~/mega-mindikot/deploy && docker compose up -d --build staging-app",no-pty,no-port-forwarding ssh-ed25519 AAAA... github-actions-staging-deploy
+```
+This prevents the key from being used for anything else even if it leaks. Start
+without it (simpler to debug), add it once the workflow is stable.
+
+**Revocation:** to revoke the key, delete its line from `~/.ssh/authorized_keys`
+on the box and/or delete the `STAGING_SSH_KEY` secret in GitHub.
+
 ---
 
 ## 9. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
+| Auto-deploy didn't trigger | Check the repo Actions tab; the workflow runs only on `push` to `staging` |
+| Deploy job: "Permission denied (publickey)" | The deploy key isn't in the box's `~/.ssh/authorized_keys`, or `STAGING_SSH_KEY` secret is wrong/malformed (§8a) |
+| Test job failed → staging didn't update | By design — staging stays on the last-good commit. Fix the failing test and re-push |
 | `git pull` refuses (local changes) | §6 stash-pull-pop dance |
 | Can't SSH / permission denied | You're probably using the wrong user — it's `debian`, not `mm` or `root`. Password auth. |
 | `staging.mindikot.com` won't resolve | DNS not propagated — wait, then `nslookup staging.mindikot.com` |
