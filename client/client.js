@@ -999,12 +999,21 @@ function renderHud() {
   }
   const leadInfo = $("lead-info");
   const leadDisp = $("lead-display");
-  if (state.leadSuit && leadInfo && leadDisp) {
+  if (leadInfo && leadDisp) {
+    // Keep the Lead chip always visible — popping it in/out between tricks shifts
+    // the center layout and is jarring. Before a lead suit exists (start of a
+    // trick, before any card is played) show a muted "—" placeholder; once the
+    // first card lands, show its suit glyph in the suit's color.
     leadInfo.classList.remove("hidden");
-    leadDisp.textContent = SUIT_GLYPH[state.leadSuit];
-    leadDisp.style.color = SUIT_COLOR[state.leadSuit] === "red" ? "var(--red)" : "#fff";
-  } else if (leadInfo) {
-    leadInfo.classList.add("hidden");
+    if (state.leadSuit) {
+      leadDisp.textContent = SUIT_GLYPH[state.leadSuit];
+      leadDisp.style.color = SUIT_COLOR[state.leadSuit] === "red" ? "var(--red)" : "#fff";
+      leadDisp.style.opacity = "1";
+    } else {
+      leadDisp.textContent = "—";
+      leadDisp.style.color = "var(--muted)";
+      leadDisp.style.opacity = "0.6";
+    }
   }
   renderTensTracker();
   renderSeats();
@@ -1031,10 +1040,9 @@ function renderTensTracker() {
     for (const c of (state.capturedTens[team] || [])) {
       if (perSuit[c.suit] !== undefined) perSuit[c.suit]++;
     }
-    const captured = (state.capturedTens[team] || []).length;
-    // Hide the tracker if this team hasn't captured any 10s yet — no empty
-    // placeholder cluttering the score panel at match start.
-    if (captured === 0) { wrap.classList.add("hidden"); wrap.innerHTML = ""; return; }
+    // Always render the full 4x6 grid so both team panels stay the same height
+    // and the score bar stays vertically aligned. Empty chips (dashed) mark
+    // uncaptured copies; captured chips take the team color (via .captured).
     wrap.classList.remove("hidden");
     let html = "";
     for (const suit of SUITS_ORDER) {

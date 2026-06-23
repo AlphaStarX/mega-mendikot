@@ -71,20 +71,20 @@
         <div class="score team-a">
           <div class="score-main"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-a">0</b></div>
-          <!-- Captured-10s for Team A: 4 suits x 6 chips each. Hidden until A
-               captures its first Ten. Lives under A's own score. -->
-          <div id="tens-tracker-a" class="tens-tracker hidden"></div>
+          <!-- Captured-10s for Team A: 4 suits x 6 chips each. Always rendered
+               so both team panels stay the same height (aligned score bar). -->
+          <div id="tens-tracker-a" class="tens-tracker"></div>
         </div>
         <div class="center-info">
           <div id="trump-info" class="trump-info">Trump: <b id="trump-display"></b></div>
-          <div id="lead-info" class="info-line hidden">Lead: <b id="lead-display">—</b></div>
+          <div id="lead-info" class="info-line">Lead: <b id="lead-display">—</b></div>
           <div id="trick-info">Trick: <b id="trick-num">1</b>/18</div>
         </div>
         <div class="score team-b">
           <div class="score-main">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
           <div class="tricks-line">Tricks won: <b id="tricks-b">0</b></div>
-          <!-- Captured-10s for Team B: mirrors team-a. Hidden until B captures. -->
-          <div id="tens-tracker-b" class="tens-tracker hidden"></div>
+          <!-- Captured-10s for Team B: mirrors team-a. Always rendered for alignment. -->
+          <div id="tens-tracker-b" class="tens-tracker"></div>
         </div>
       </header>
 
