@@ -6,8 +6,12 @@
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
 > **Host:** OVHcloud VPS-1 2027 (`vps-38d48eec.vps.ovh.ca`), Canada — Beauharnois (BHS),
 > Debian 13, 2 vCores / 4 GB / 40 GB NVMe — **DEPLOYED & LIVE at https://play.mindikot.com**
+> **Preview:** `https://staging.mindikot.com` — permanent always-on preview of the `staging` branch
+> (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Tests:** 50+ passing (rules + auth + livekit + bot + match + debug); match suite now <100ms
 > (was ~20s+) via setImmediate-based fastTimers + waitFor polling.
+> **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
+> box-specific caveats, and troubleshooting. **Read it first in a new session.**
 
 > ⚠️ **AGENT GROUND RULES — read before doing anything**
 > - **Never `git push` without explicit user permission.** Committing locally is fine,
@@ -228,13 +232,17 @@ containerized box: app + Postgres + LiveKit SFU + Caddy reverse proxy.
 ## 3. Architecture at a glance
 
 ```
-OVHcloud VPS-1 (Canada BHS / Beauharnois, Debian 13, Docker Compose)
-├── caddy   (80/443, auto-TLS)  ─► play.mindikot.com  ─► app:3000
-│                                └─ voice.mindikot.com ─► livekit:7880 (WSS signaling)
-├── app     (node server/index.js)  — game + WS + auth + LiveKit token authority
-├── db      (postgres:16)           — accounts (User table)
-└── livekit (SFU + TURN)            — 5349/tcp+udp, 50000-60000/udp (direct, not proxied)
+OVHcloud VPS-1 (Canada BHS / Beauharnois, Debian 13, Docker Compose) — single stack
+├── caddy        (80/443, auto-TLS) ─► play.mindikot.com    ─► app:3000         (prod)
+│                                  ├─ staging.mindikot.com ─► staging-app:3000 (preview)
+│                                  └─ voice.mindikot.com   ─► livekit:7880     (WSS signaling)
+├── app          (node server/index.js)  — prod game + WS + auth + LiveKit tokens
+├── staging-app  (node server/index.js)  — preview of staging branch
+├── db           (postgres:16)           — prod accounts (User table)
+├── staging-db   (postgres:16)           — throwaway staging accounts
+└── livekit      (SFU + TURN, shared)    — 5349/tcp+udp, 50000-50100/udp (direct, not proxied)
 ```
+See `docs/DEPLOYMENT.md` for the full ops runbook (workflows, caveats, troubleshooting).
 
 **Identity model:** anonymous `sessionId` (sessionStorage) for guests; stable DB `userId`
 for authenticated users (token in localStorage → cross-device reconnect). The server is
