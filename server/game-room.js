@@ -11,6 +11,7 @@ import {
 } from "../shared/rules.js";
 import { selectBotPlayCard } from "../shared/bot.js";
 import { makeLiveKitToken, voiceConfigured, voiceConfig, voiceRoomName } from "./livekit.js";
+import { getDb } from "./db.js";
 
 export const TURN_SECONDS = 20;     // spec §2.9
 const BOT_DELAY_MIN_MS = 1500;      // bots "think" before playing
@@ -302,9 +303,15 @@ export class GameRoom {
     if (!seat || !seat.hand || !seat.hand.length) return; // nothing to play
     seat.timeouts++;
     if (seat.timeouts >= 2) seat.isAfk = true;
-    const card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
-    // autoPlayPick can return null/undefined if no legal pick is found; guard so a
-    // thrown error here doesn't poison the recurring turn-timer tick loop.
+    let card;
+    try {
+      card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
+    } catch (e) {
+      // autoPlayPick threw (shouldn't for a non-empty hand) — log + force a
+      // lowest-card fallback so the match can never deadlock on a stuck bot.
+      this.log.push(`auto-play threw for seat ${this.activeSeat} (${e.message}); forcing fallback.`);
+      card = seat.hand.slice().sort((a, b) => a.rank - b.rank)[0];
+    }
     if (!card) {
       this.log.push(`auto-play had no card for seat ${this.activeSeat}; skipping.`);
       return;
@@ -512,6 +519,64 @@ export class GameRoom {
     } else {
       this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
     }
+    // Best-effort: credit each authenticated human's lifetime stats. Fire-and-
+    // forget — must NEVER break the match-end flow (no await, errors swallowed).
+    this.recordStats(winningTeam);
+  }
+
+  // Classify each seat's result given the winning team. Pure — no DB access —
+  // so it's unit-testable without coupling. Exported for tests.
+  static classifySeats(seats, winningTeam) {
+    return seats
+      .filter((s) => s.isHuman && s.sessionId)
+      .map((s) => {
+        const draw = winningTeam === null;
+        const won = !draw && s.team === winningTeam;
+        return {
+          sessionId: s.sessionId,
+          team: s.team,
+          tens: s.tens || 0,
+          won,
+          lost: !draw && !won,
+          draw,
+        };
+      });
+  }
+
+  // Record aggregate lifetime stats for every authenticated human. Guests
+  // (sessionId with no matching User row) are skipped via a caught P2025. Fail-
+  // soft: no DB → no-op; any error is logged and swallowed.
+  recordStats(winningTeam) {
+    const db = getDb();
+    if (!db) return; // accounts not configured — anonymous play only
+    const updates = GameRoom.classifySeats(this.seats, winningTeam);
+    if (!updates.length) return;
+    // Fire-and-forget: resolve the transaction but never let it reject into the
+    // match-end path. Each update targets a User row by id; a guest's id won't
+    // match (P2025), which we swallow per-update.
+    db.$transaction(
+      updates.map((u) =>
+        db.user
+          .update({
+            where: { id: u.sessionId },
+            data: {
+              matchesPlayed: { increment: 1 },
+              wins: { increment: u.won ? 1 : 0 },
+              losses: { increment: u.lost ? 1 : 0 },
+              draws: { increment: u.draw ? 1 : 0 },
+              tensCaptured: { increment: u.tens },
+            },
+          })
+          .catch((e) => {
+            // P2025 = row not found (a guest whose sessionId isn't a real User id).
+            if (e && e.code !== "P2025") {
+              this.log.push(`stats update failed for ${u.sessionId}: ${e.message || e}`);
+            }
+          })
+      )
+    ).catch((e) => {
+      this.log.push(`stats transaction failed: ${e.message || e}`);
+    });
   }
 
   // Return a FINISHED room to LOBBY for "Play Again": zero all match state but

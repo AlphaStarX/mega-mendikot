@@ -90,6 +90,10 @@ const state = {
   token: getToken(),
   authenticated: false,
   authPending: null,   // deferred join waiting for auth to resolve
+  // --- player stats (Phase 2) ---
+  stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
+  // --- leaderboard (Phase 3) ---
+  leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
   // lobby
   room: null,
   hostSeat: null,
@@ -210,6 +214,8 @@ function handle(m) {
     case "authError": onAuthError(m); break;
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
+    case "stats": onStats(m); break;
+    case "leaderboard": onLeaderboard(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
     case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
@@ -235,6 +241,7 @@ function onAuthOk(m) {
   state.userId = m.userId;
   state.userName = m.name;
   state.authenticated = true;
+  if (m.stats !== undefined) state.stats = m.stats;
   setToken(m.token);
   clearTimeout(state._authFallback);
   // If we were waiting to join (connect deferred auth), send the join now.
@@ -273,8 +280,53 @@ function onLoggedOut() {
   state.userId = null;
   state.userName = null;
   state.authenticated = false;
+  state.stats = null;
   refreshAuthUI();
   showScreen("join-screen");
+}
+
+// ---------- player stats (Phase 2) ----------
+// Refresh stats arrives from the server (getStats reply, or embedded in authOk).
+function onStats(m) {
+  state.stats = m.stats || null;
+  // If the profile screen is visible, re-render it with the fresh numbers.
+  const screen = $("profile-screen");
+  if (screen && !screen.classList.contains("hidden")) renderProfile();
+}
+
+// ---------- leaderboard (Phase 3) ----------
+// Leaderboard rows arrive from the server (getLeaderboard reply). Re-render the
+// screen if it's currently visible.
+function onLeaderboard(m) {
+  state.leaderboard = Array.isArray(m.rows) ? m.rows : null;
+  const screen = $("leaderboard-screen");
+  if (screen && !screen.classList.contains("hidden")) renderLeaderboard();
+}
+
+// Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
+// empty (no one has played yet), and highlights the current user's row.
+function renderLeaderboard() {
+  const wrap = $("leaderboard-rows");
+  if (!wrap) return;
+  if (state.leaderboard === null) {
+    wrap.innerHTML = `<div class="lb-empty">Leaderboard isn't available right now.</div>`;
+    return;
+  }
+  if (!state.leaderboard.length) {
+    wrap.innerHTML = `<div class="lb-empty">No ranked players yet — be the first! 🏆</div>`;
+    return;
+  }
+  wrap.innerHTML = state.leaderboard.map((r) => {
+    const isMe = state.authenticated && state.userId && r.id === state.userId;
+    const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : "";
+    const wr = r.winRate !== null && r.winRate !== undefined ? `<span class="lb-wr">${r.winRate}%</span>` : "";
+    return `<div class="lb-row${isMe ? " me" : ""}">` +
+      `<span class="lb-rank">${medal || r.rank}</span>` +
+      `<span class="lb-name">${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
+      `<span class="lb-record"><b>${r.wins}</b>W · ${r.losses}L · ${r.draws}D ${wr}</span>` +
+      `<span class="lb-matches">${r.matchesPlayed} games</span>` +
+    `</div>`;
+  }).join("");
 }
 
 // Send a signup request over an open socket. Opens one if needed.
@@ -754,7 +806,7 @@ function onMatchEnd(m) {
 
 // ---------- rendering ----------
 function showScreen(id) {
-  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen"].forEach((s) => $(s).classList.add("hidden"));
+  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen", "leaderboard-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
   // The in-match "?" help button is only relevant while playing.
   const help = $("game-help-btn");
@@ -782,6 +834,106 @@ function refreshAuthUI() {
     if (welcome) welcome.classList.add("hidden");
     if (guestActions) guestActions.classList.remove("hidden");
   }
+  // The Profile/Stats button is only for authenticated users.
+  const profileBtn = $("profile-btn");
+  if (profileBtn) profileBtn.classList.toggle("hidden", !state.authenticated);
+}
+
+// ---------- player stats rendering (Phase 2) ----------
+// Render the profile screen from state.stats. Handles the null/guest case with a
+// "log in to track stats" prompt. Win rate excludes draws from the denominator.
+// Rich dashboard layout: player header card, stat tiles, a record breakdown, and
+// locked "coming soon" sections for features not yet backed by data.
+function renderProfile() {
+  const wrap = $("profile-stats");
+  if (!wrap) return;
+  if (!state.authenticated || !state.stats) {
+    wrap.innerHTML =
+      `<div class="profile-empty">` +
+        `<div class="profile-empty-icon">♠</div>` +
+        `<p>Log in to track your wins, losses, and Tens captured across matches.</p>` +
+        `<button id="profile-login-btn" class="primary">Log in / Sign up</button>` +
+      `</div>`;
+    const login = $("profile-login-btn");
+    if (login) login.addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });
+    return;
+  }
+  const s = state.stats;
+  const decisive = s.wins + s.losses;          // draws excluded from win-rate denominator
+  const winRate = decisive > 0 ? Math.round((s.wins / decisive) * 100) : null;
+  const initials = (state.userName || "?").slice(0, 2).toUpperCase();
+  // Header card: avatar (initials in a gold ring) + name + a one-line summary.
+  wrap.innerHTML =
+    // --- Player header card ---
+    `<div class="profile-header">` +
+      `<div class="profile-avatar">${initials}</div>` +
+      `<div class="profile-id">` +
+        `<div class="profile-name">${escapeHtml(state.userName || "Player")}</div>` +
+        `<div class="profile-summary">${recordLine(s, winRate)}</div>` +
+      `</div>` +
+    `</div>` +
+    // --- Stat tiles (2 rows of compact tiles) ---
+    `<div class="profile-section-label">Lifetime Stats</div>` +
+    `<div class="stats-grid">` +
+      statTile("Wins", s.wins, "win", "✓") +
+      statTile("Losses", s.losses, "loss", "✕") +
+      statTile("Draws", s.draws, "draw", "🤝") +
+      statTile("Win Rate", winRate !== null ? winRate + "%" : "—", "rate", "%") +
+      statTile("Matches", s.matchesPlayed, "match", "♣") +
+      statTile("Tens", s.tensCaptured, "tens", "★") +
+    `</div>` +
+    // --- Match record (a visual W/L/D proportion bar). Only shown once the
+    // player has at least one match — otherwise it's a confusing empty bar. ---
+    `<div class="profile-section-label">Match Record</div>` +
+    (s.matchesPlayed > 0
+      ? `<div class="record-bar">` +
+          recordSegment("Wins", s.wins, s.matchesPlayed, "win") +
+          recordSegment("Losses", s.losses, s.matchesPlayed, "loss") +
+          recordSegment("Draws", s.draws, s.matchesPlayed, "draw") +
+        `</div>`
+      : `<div class="record-empty">Play a match to build your record</div>`) +
+    // --- Coming soon (features not yet backed by data) ---
+    `<div class="profile-section-label">More</div>` +
+    `<div class="profile-soon-grid">` +
+      soonTile("Match History", "Per-game results, scores & dates") +
+      soonTile("Achievements", "Badges for milestones & streaks") +
+      soonTile("Leaderboard", "Rank against other players") +
+    `</div>`;
+}
+
+// A one-line summary like "12W · 7L · 1D · 58% win rate" (hidden when 0 games).
+function recordLine(s, winRate) {
+  if (!s.matchesPlayed) return "No matches yet — play your first game!";
+  const wr = winRate !== null ? ` · ${winRate}% win rate` : "";
+  return `${s.wins}W · ${s.losses}L · ${s.draws}D${wr}`;
+}
+
+// A compact stat tile: icon + big value + label.
+function statTile(label, value, cls, icon) {
+  return `<div class="stat-tile stat-${cls}">` +
+    `<div class="stat-tile-icon">${icon}</div>` +
+    `<div class="stat-tile-value">${value}</div>` +
+    `<div class="stat-tile-label">${label}</div>` +
+  `</div>`;
+}
+
+// One segment of the record bar: width is value's share of `total` matches.
+// Zero-value segments are omitted entirely so the bar only shows outcomes that
+// actually occurred (no empty colored slivers).
+function recordSegment(label, value, total, cls) {
+  if (!value) return "";                      // skip zero outcomes — no empty slivers
+  const pct = Math.round((value / total) * 100);
+  return `<div class="record-seg record-${cls}" style="flex:${value}">` +
+    `<span class="record-seg-label">${label} ${value} · ${pct}%</span>` +
+  `</div>`;
+}
+
+// A locked "coming soon" tile for features not yet built.
+function soonTile(title, desc) {
+  return `<div class="soon-tile">` +
+    `<div class="soon-tile-title">🔒 ${title}</div>` +
+    `<div class="soon-tile-desc">${desc}</div>` +
+  `</div>`;
 }
 
 function showAuthMsg(text) {
@@ -1244,6 +1396,46 @@ $("lobby-voice-toggle").addEventListener("contextmenu", (e) => {
 $("howto-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("learn"));
 $("game-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
 $("end-help-btn").addEventListener("click", () => window.Tutorial && window.Tutorial.open("rules"));
+
+// --- Profile / Stats (Phase 2) ---
+// The button is only visible when authenticated (refreshAuthUI toggles it).
+const profileBtn = $("profile-btn");
+if (profileBtn) {
+  profileBtn.addEventListener("click", () => {
+    // Refresh fresh stats from the server, then show the profile screen.
+    send({ t: "getStats" });
+    renderProfile();
+    showScreen("profile-screen");
+  });
+}
+const profileBackBtn = $("profile-back-btn");
+if (profileBackBtn) {
+  profileBackBtn.addEventListener("click", () => showScreen("join-screen"));
+}
+
+// --- Leaderboard (Phase 3) ---
+// Public — anyone can view. Fetch the latest top players then show the screen.
+const leaderboardBtn = $("leaderboard-btn");
+if (leaderboardBtn) {
+  leaderboardBtn.addEventListener("click", () => {
+    send({ t: "getLeaderboard" });
+    renderLeaderboard();
+    showScreen("leaderboard-screen");
+  });
+}
+const leaderboardBackBtn = $("leaderboard-back-btn");
+if (leaderboardBackBtn) {
+  leaderboardBackBtn.addEventListener("click", () => showScreen("join-screen"));
+}
+// Cross-link from the profile screen: "View Leaderboard".
+const profileLeaderboardBtn = $("profile-leaderboard-btn");
+if (profileLeaderboardBtn) {
+  profileLeaderboardBtn.addEventListener("click", () => {
+    send({ t: "getLeaderboard" });
+    renderLeaderboard();
+    showScreen("leaderboard-screen");
+  });
+}
 
 // --- Auth screen wiring (Phase 1) ---
 $("login-btn").addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });

@@ -19,6 +19,8 @@
           <button id="quick-btn" class="primary">Quick Match</button>
           <button id="create-btn">Create Private Room</button>
           <button id="howto-btn">How to Play</button>
+          <button id="profile-btn" class="hidden">📊 My Stats</button>
+          <button id="leaderboard-btn">🏆 Leaderboard</button>
         </div>
         <div class="join-code-row">
           <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
@@ -139,6 +141,30 @@
           <button id="rematch-btn" class="primary">Play Again</button>
           <button id="end-help-btn">How to Play</button>
           <button id="end-leave-btn" class="link-btn">Leave</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Profile / Stats screen (Phase 2) -->
+    <section id="profile-screen" class="screen hidden">
+      <div class="card-panel profile-panel">
+        <h1>My Stats</h1>
+        <div id="profile-stats"></div>
+        <button id="profile-leaderboard-btn" class="link-btn" style="margin-top:12px">🏆 View Leaderboard</button>
+        <div class="menu-buttons" style="margin-top:20px">
+          <button id="profile-back-btn">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Leaderboard screen (Phase 3) -->
+    <section id="leaderboard-screen" class="screen hidden">
+      <div class="card-panel leaderboard-panel">
+        <h1>🏆 Leaderboard</h1>
+        <p class="tag" style="margin-bottom:14px">Top players by total wins</p>
+        <div id="leaderboard-rows"></div>
+        <div class="menu-buttons" style="margin-top:20px">
+          <button id="leaderboard-back-btn">Back</button>
         </div>
       </div>
     </section>

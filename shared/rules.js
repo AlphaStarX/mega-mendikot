@@ -122,7 +122,10 @@ export function autoPlayPick(hand, leadSuit, trumpSuit) {
     const counts = {};
     for (const c of hand) counts[c.suit] = (counts[c.suit] || 0) + 1;
     let best = hand[0].suit, bestN = -1;
-    for (const s of SUITS) if ((counts[s] || 0) > bestN) { bestN = counts[s]; best = s; }
+    for (const s of SUITS) {
+      const n = counts[s] || 0;   // coerce: counts[s] is undefined for unheld suits
+      if (n > bestN) { bestN = n; best = s; }
+    }
     return hand.filter((c) => c.suit === best).sort(byRankAsc)[0];
   }
   return hand.slice().sort(byRankAsc)[0];

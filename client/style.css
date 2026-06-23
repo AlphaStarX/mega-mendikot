@@ -123,6 +123,116 @@ body::after {
 #auth-mode-toggle { text-align: center; margin-top: 14px; }
 #auth-mode-toggle a { color: var(--gold); text-decoration: underline; cursor: pointer; }
 
+/* ---------- Profile / Stats dashboard (Phase 2) ---------- */
+#profile-screen h1 { color: var(--gold); margin-bottom: 6px; }
+.profile-panel { min-width: 380px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+
+/* Empty / guest state */
+.profile-empty { text-align: center; padding: 24px 0; }
+.profile-empty-icon { font-size: 64px; color: var(--gold); opacity: .25; line-height: 1; margin-bottom: 12px; }
+.profile-empty p { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+.profile-empty button { display: inline-block; }
+
+/* Player header card: avatar (gold ring) + name + one-line summary */
+.profile-header {
+  display: flex; align-items: center; gap: 16px;
+  background: linear-gradient(135deg, rgba(245,197,66,.12), rgba(0,0,0,.25));
+  border: 1px solid rgba(245,197,66,.3); border-radius: 16px;
+  padding: 16px 18px; margin-bottom: 18px;
+}
+.profile-avatar {
+  width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 800; color: var(--gold);
+  background: radial-gradient(circle, #2a4a36, #0a2417);
+  border: 3px solid var(--gold);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.4), 0 0 14px rgba(245,197,66,.3);
+}
+.profile-id { min-width: 0; }
+.profile-name { font-size: 22px; font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-summary { font-size: 13px; color: var(--gold); margin-top: 2px; }
+
+/* Section label */
+.profile-section-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--muted); margin: 18px 0 8px; padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+/* Stat tiles: compact icon + value + label, 3 per row */
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stat-tile {
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px; padding: 14px 8px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.stat-tile-icon { font-size: 14px; opacity: .7; line-height: 1; }
+.stat-tile-value { font-size: 28px; font-weight: 800; line-height: 1; }
+.stat-tile-label { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
+/* Per-stat accent colors */
+.stat-tile.stat-win .stat-tile-value { color: var(--gold); }
+.stat-tile.stat-loss .stat-tile-value { color: var(--red); }
+.stat-tile.stat-draw .stat-tile-value { color: var(--muted); }
+.stat-tile.stat-rate .stat-tile-value { color: var(--gold); }
+.stat-tile.stat-match .stat-tile-value { color: var(--text); }
+.stat-tile.stat-tens .stat-tile-value { color: var(--gold); }
+
+/* Match record bar: a single horizontal stacked W/L/D proportion bar */
+.record-bar { display: flex; gap: 3px; height: 36px; border-radius: 10px; overflow: hidden; background: rgba(0,0,0,.3); }
+.record-seg { display: flex; align-items: center; justify-content: center; min-width: 0; padding: 0 6px; }
+.record-seg-label { font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.record-win { background: linear-gradient(180deg, #46a069, #2a6b42); color: #fff; }
+.record-loss { background: linear-gradient(180deg, #b5483a, #7d2e23); color: #fff; }
+.record-draw { background: linear-gradient(180deg, #4a4a4a, #2c2c2c); color: var(--text); }
+/* Placeholder shown when a new account has played no matches yet. */
+.record-empty {
+  text-align: center; font-size: 13px; color: var(--muted); font-style: italic;
+  padding: 14px; border: 1px dashed rgba(255,255,255,.12); border-radius: 10px;
+  background: rgba(0,0,0,.2);
+}
+
+/* Coming-soon tiles (features not yet backed by data) */
+.profile-soon-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.profile-soon-grid .soon-tile:nth-child(3) { grid-column: 1 / -1; }  /* 3rd spans full width */
+.soon-tile {
+  background: rgba(0,0,0,.2); border: 1px dashed rgba(255,255,255,.15);
+  border-radius: 12px; padding: 12px 14px;
+}
+.soon-tile-title { font-size: 13px; font-weight: 700; color: var(--muted); }
+.soon-tile-desc { font-size: 11px; color: var(--muted); opacity: .7; margin-top: 2px; }
+
+@media (max-width: 420px) {
+  .stat-tile-value { font-size: 22px; }
+  .profile-avatar { width: 48px; height: 48px; font-size: 20px; }
+  .profile-name { font-size: 18px; }
+  .profile-soon-grid { grid-template-columns: 1fr; }
+  .profile-soon-grid .soon-tile:nth-child(3) { grid-column: auto; }
+}
+
+/* ---------- Leaderboard screen (Phase 3) ---------- */
+.leaderboard-panel { min-width: 360px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+.leaderboard-panel h1 { text-align: center; }
+.lb-empty { text-align: center; color: var(--muted); font-style: italic; padding: 28px 0; font-size: 14px; }
+/* Ranked rows: a flex row per player. rank | name | record | games */
+.lb-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: 10px; margin-bottom: 4px;
+  background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.06);
+  transition: background .12s;
+}
+.lb-row:nth-child(odd) { background: rgba(0,0,0,.32); }
+.lb-row.me { background: rgba(245,197,66,.14); border-color: rgba(245,197,66,.5); box-shadow: 0 0 0 1px rgba(245,197,66,.2); }
+.lb-rank { width: 36px; flex-shrink: 0; text-align: center; font-weight: 800; font-size: 16px; color: var(--muted); }
+.lb-name { flex: 1 1 auto; min-width: 0; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-record { flex-shrink: 0; font-size: 12px; color: var(--muted); }
+.lb-record b { color: var(--gold); font-size: 14px; }
+.lb-wr { color: var(--gold); font-weight: 700; margin-left: 4px; }
+.lb-matches { flex-shrink: 0; font-size: 11px; color: var(--muted); min-width: 64px; text-align: right; }
+@media (max-width: 480px) {
+  .lb-row { flex-wrap: wrap; gap: 6px 10px; padding: 8px 10px; }
+  .lb-matches { min-width: 0; }
+}
+
 /* In-match control cluster (Leave + help). Pinned to the top-RIGHT corner
    (position: fixed) to match the original placement, but sized to the same
    44px height as the score panels so they align vertically.
@@ -183,9 +293,12 @@ body::after {
   aspect-ratio: 1.15 / 1;          /* slightly wider than tall — fits 10 around an oval */
   max-height: 64vh;
   margin: 14px auto;
+  /* Match the game table's felt: lamp pool + weave cross-hatch over emerald. */
   background:
-    radial-gradient(ellipse at center, rgba(26,68,42,.6) 0%, rgba(10,30,18,.9) 72%),
-    repeating-conic-gradient(rgba(0,0,0,.08) 0deg 12deg, transparent 12deg 24deg);
+    repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.03) 0 2px, transparent 2px 6px),
+    radial-gradient(ellipse 70% 60% at 50% 38%, rgba(255,250,220,.10), transparent 65%),
+    radial-gradient(ellipse at center, rgba(26,68,42,.6) 0%, rgba(10,30,18,.9) 72%);
   border: 4px solid var(--gold-deep);
   border-radius: 50%;
   box-shadow: inset 0 0 40px rgba(0,0,0,.55), 0 0 0 6px var(--wood), 0 0 0 7px var(--gold-deep);
@@ -250,7 +363,7 @@ body::after {
 }
 /* Score panels are stacked columns: the Tens row on top, a "Tricks won" line below.
    min-height keeps both Team panels (and thus the HUD row) a consistent height. */
-.score { display: flex; flex-direction: column; gap: 2px; padding: 6px 14px; min-height: 54px; border-radius: 16px; background: rgba(0,0,0,.25); flex-shrink: 0; }
+.score { display: flex; flex-direction: column; gap: 2px; padding: 6px 14px; min-height: 54px; border-radius: 16px; background: rgba(0,0,0,.25); flex-shrink: 0; } /* glass applied via @supports below */
 .score-main { font-size: 18px; display: flex; align-items: center; gap: 8px; }
 .tricks-line { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .3px; }
 .tricks-line b { font-size: 13px; color: var(--gold); }
@@ -302,7 +415,7 @@ body::after {
   font-size: 15px;
   line-height: 1.1;
   white-space: nowrap;
-}
+} /* glass applied via @supports below */
 .trump-info b { color: var(--gold); font-size: 22px; }
 .info-line b { font-size: 20px; }
 
@@ -311,7 +424,14 @@ body::after {
   position: relative;
   width: min(92vw, 720px);
   height: min(58vh, 460px);
-  background: radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
+  /* Layered felt: lamp-light pool (offset up like a hanging light) over the base
+     emerald gradient, plus a faint felt-weave cross-hatch so the green reads as
+     fabric, not a flat fill. Layers (top→bottom): weave, lamp pool, base felt. */
+  background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,.04) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(-45deg, rgba(255,255,255,.03) 0 2px, transparent 2px 6px),
+    radial-gradient(ellipse 70% 60% at 50% 38%, rgba(255,250,220,.10), transparent 65%),
+    radial-gradient(ellipse at center, var(--felt) 0%, var(--felt-dark) 100%);
   border-radius: 50%;
   /* Use padding + a wrapper-style ring via box-shadow OUTSIDE the circle so the
      mahogany rail + gold trim follow the curve (border-image would render square). */
@@ -323,13 +443,17 @@ body::after {
     0 14px 40px rgba(0,0,0,.6);               /* drop shadow */
   z-index: 2;
 }
-/* Faint center monogram (decorative spade), sits behind played cards/kitty. */
+/* Center logo emblem: a faint gold monogram watermark behind played cards/kitty.
+   Pure text (no box) so it can never intercept or overlap the play area. */
 #table::before {
   content: "♠";
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  font-size: 140px; color: rgba(255,255,255,.04);
+  font-size: clamp(90px, 18vh, 150px);
+  color: rgba(245,197,66,.07);
+  text-shadow: 0 0 30px rgba(245,197,66,.12);
   pointer-events: none; z-index: 0;
+  line-height: 1;
 }
 /* The played-cards + kitty sit at z-index ≥ 1 so they render above the emblem. */
 #table > #center { z-index: 1; }
@@ -372,7 +496,20 @@ body::after {
 }
 .timer-ring.warn .timer-ring-fill { stroke: var(--red); animation: ring-flash 0.5s ease-in-out infinite alternate; }
 @keyframes ring-flash { to { opacity: 0.4; } }
-.seat .name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
+.seat .name {
+  /* Gold name plate: a small pill with the gold gradient + dark text, matching
+     the game's button finish. Team affiliation shows via a colored bottom edge. */
+  font-size: 11px; font-weight: 700; color: #2a1c00;
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
+  padding: 2px 10px; border-radius: 999px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 92px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 4px rgba(0,0,0,.5);
+  margin-top: 1px;
+  position: relative;
+}
+/* Team-colored bottom edge so the plate still signals A vs B while staying gold. */
+.seat.team-a .name { border-bottom: 2px solid var(--teamA); }
+.seat.team-b .name { border-bottom: 2px solid var(--teamB); }
 .seat .meta { font-size: 11px; color: var(--muted); }
 
 /* ---------- Lead-selection ceremony (spec §2.4) ---------- */
@@ -621,6 +758,30 @@ body::after {
   width: 54px; padding: 0; font-size: 18px;
 }
 .hud-btn.voice[aria-pressed="true"] { opacity: .7; border-style: dashed; }
+
+/* ---------- Glassmorphism (frosted-glass HUD panels) ----------
+   Applied only where backdrop-filter is supported, so older browsers fall back
+   to the solid translucent backgrounds defined above (no breakage). The blur
+   turns the flat dark panels into frosted glass floating over the felt. */
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .score {
+    background: rgba(10,30,20,.45);
+    border: 1px solid rgba(245,197,66,.3);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 4px 14px rgba(0,0,0,.35);
+  }
+  .center-info > div {
+    background: rgba(10,30,20,.4);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+  }
+  .hud-btn {
+    background: rgba(10,30,20,.42);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .hud-btn:hover { background: rgba(245,197,66,.25); }
+  .hud-btn.leave { background: rgba(80,12,12,.5); }
+}
 
 
 @media (max-width: 600px) {
