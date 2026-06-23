@@ -46,66 +46,85 @@ async function waitFor(fn, { timeout = 5000, interval = 5, msg = "waitFor" } = {
 test("full all-bot match completes with a valid winner", async () => {
   const restore = fastTimers();
   const room = new GameRoom("TESTRM");
-  // No humans added — all 10 seats stay bots.
-  room.start();
-  // Ceremony + bot match run via staged (compressed) timers; poll for completion
-  // instead of fixed-sleeping. Resolves in a few ms in fastTimers mode.
-  await waitFor(() => room.matchState === "FINISHED", { msg: "match 1 to finish" });
-  assert.equal(room.matchState, "FINISHED", "match reached FINISHED");
-  const total = room.score.A + room.score.B;
-  assert.ok(total <= TOTAL_TENS, `captured tens ${total} must not exceed ${TOTAL_TENS}`);
-  const winnerHas13 = room.score.A >= WIN_TENS || room.score.B >= WIN_TENS;
-  const deadlock1212 = room.score.A === 12 && room.score.B === 12;
-  assert.ok(winnerHas13 || deadlock1212, `score ${JSON.stringify(room.score)} is a valid terminal state`);
-  restore();
+  try {
+    // No humans added — all 10 seats stay bots.
+    room.start();
+    // Ceremony + bot match run via staged (compressed) timers; poll for completion
+    // instead of fixed-sleeping. Resolves in a few ms in fastTimers mode.
+    await waitFor(() => room.matchState === "FINISHED", { msg: "match 1 to finish" });
+    assert.equal(room.matchState, "FINISHED", "match reached FINISHED");
+    const total = room.score.A + room.score.B;
+    assert.ok(total <= TOTAL_TENS, `captured tens ${total} must not exceed ${TOTAL_TENS}`);
+    const winnerHas13 = room.score.A >= WIN_TENS || room.score.B >= WIN_TENS;
+    const deadlock1212 = room.score.A === 12 && room.score.B === 12;
+    assert.ok(winnerHas13 || deadlock1212, `score ${JSON.stringify(room.score)} is a valid terminal state`);
+  } finally {
+    // Tear down timers so the process can exit. In production the cleanup
+    // interval does this when deleting a finished room; the test must do it
+    // explicitly or the setImmediate-based fastTimers loop pins the event loop.
+    room.clearTimers();
+    restore();
+  }
 });
 
 test("match consumes exactly the tricks it played; no cards vanish", async () => {
   const restore = fastTimers();
   const room = new GameRoom("TEST2");
-  room.start();
-  // The lead-selection ceremony runs first (staged timers); the real 192-card
-  // hand isn't dealt until it resolves. Wait for FINISHED, then verify.
-  await waitFor(() => room.matchState === "FINISHED", { msg: "match 2 to finish" });
-  assert.equal(room.matchState, "FINISHED");
-  // After a full match, hands are nearly empty; verify no cards vanished: the
-  // cards still in hands + 10 per trick played must equal the original 180 dealt.
-  const inHands = room.seats.reduce((n, s) => n + s.hand.length, 0);
-  assert.equal(inHands + Math.min(room.trickNumber, 18) * 10, 180,
-    `hand+played must conserve 180 (hands=${inHands}, tricks=${room.trickNumber})`);
-  assert.equal(room.kitty.length, 12, "kitty is always 12 cards");
-  assert.ok(room.kittyIdx <= 12, `kitty revealed ${room.kittyIdx} <= 12`);
-  restore();
+  try {
+    room.start();
+    // The lead-selection ceremony runs first (staged timers); the real 192-card
+    // hand isn't dealt until it resolves. Wait for FINISHED, then verify.
+    await waitFor(() => room.matchState === "FINISHED", { msg: "match 2 to finish" });
+    assert.equal(room.matchState, "FINISHED");
+    // After a full match, hands are nearly empty; verify no cards vanished: the
+    // cards still in hands + 10 per trick played must equal the original 180 dealt.
+    const inHands = room.seats.reduce((n, s) => n + s.hand.length, 0);
+    assert.equal(inHands + Math.min(room.trickNumber, 18) * 10, 180,
+      `hand+played must conserve 180 (hands=${inHands}, tricks=${room.trickNumber})`);
+    assert.equal(room.kitty.length, 12, "kitty is always 12 cards");
+    assert.ok(room.kittyIdx <= 12, `kitty revealed ${room.kittyIdx} <= 12`);
+  } finally {
+    room.clearTimers();
+    restore();
+  }
 });
 
 test("lead-selection ceremony sets a valid leadSeat (>= 0, unique winner)", async () => {
   const restore = fastTimers();
   const room = new GameRoom("LEAD1");
-  room.start();
-  // Ceremony runs via staged timers; the real deal + leadSeat assignment happen
-  // once it resolves. Match goes all-bot so it completes on its own.
-  await waitFor(() => room.leadSeat >= 0, { msg: "leadSeat assigned" });
-  assert.ok(room.leadSeat >= 0 && room.leadSeat < 10, `leadSeat valid: ${room.leadSeat}`);
-  await waitFor(() => room.matchState === "FINISHED", { msg: "ceremony match to finish" });
-  assert.equal(room.matchState, "FINISHED", "match still completes after ceremony");
-  restore();
+  try {
+    room.start();
+    // Ceremony runs via staged timers; the real deal + leadSeat assignment happen
+    // once it resolves. Match goes all-bot so it completes on its own.
+    await waitFor(() => room.leadSeat >= 0, { msg: "leadSeat assigned" });
+    assert.ok(room.leadSeat >= 0 && room.leadSeat < 10, `leadSeat valid: ${room.leadSeat}`);
+    await waitFor(() => room.matchState === "FINISHED", { msg: "ceremony match to finish" });
+    assert.equal(room.matchState, "FINISHED", "match still completes after ceremony");
+  } finally {
+    room.clearTimers();
+    restore();
+  }
 });
 
 test("multi-human: two humans get personalized fog-of-war views", async () => {
   const restore = fastTimers();
   const room = new GameRoom("MH1");
-  const ws1 = { readyState: 1, send: (d) => {}, sessionId: "sess-1" };
-  const ws2 = { readyState: 1, send: (d) => {}, sessionId: "sess-2" };
-  const s1 = room.addHuman(ws1, "sess-1", "Alice");
-  const s2 = room.addHuman(ws2, "sess-2", "Bob");
-  assert.notEqual(s1, -1, "Alice seated");
-  assert.notEqual(s2, -1, "Bob seated");
-  assert.notEqual(s1, s2, "different seats");
-  assert.ok(room.seats[s1].isHuman && room.seats[s2].isHuman, "both are human");
-  assert.equal(room.humanCount(), 2, "two humans");
-  // Teams should differ (balance logic puts 2nd human on the other team)
-  assert.notEqual(room.seats[s1].team, room.seats[s2].team, "humans on different teams");
-  restore();
+  try {
+    const ws1 = { readyState: 1, send: (d) => {}, sessionId: "sess-1" };
+    const ws2 = { readyState: 1, send: (d) => {}, sessionId: "sess-2" };
+    const s1 = room.addHuman(ws1, "sess-1", "Alice");
+    const s2 = room.addHuman(ws2, "sess-2", "Bob");
+    assert.notEqual(s1, -1, "Alice seated");
+    assert.notEqual(s2, -1, "Bob seated");
+    assert.notEqual(s1, s2, "different seats");
+    assert.ok(room.seats[s1].isHuman && room.seats[s2].isHuman, "both are human");
+    assert.equal(room.humanCount(), 2, "two humans");
+    // Teams should differ (balance logic puts 2nd human on the other team)
+    assert.notEqual(room.seats[s1].team, room.seats[s2].team, "humans on different teams");
+  } finally {
+    room.clearTimers();
+    restore();
+  }
 });
 
 test("reconnection reclaims the original seat by sessionId", () => {
@@ -143,20 +162,24 @@ test("voice is silent when LIVEKIT_* env vars are unset (graceful no-op)", async
   const saved = { LIVEKIT_API_KEY: process.env.LIVEKIT_API_KEY, LIVEKIT_API_SECRET: process.env.LIVEKIT_API_SECRET, LIVEKIT_URL: process.env.LIVEKIT_URL };
   delete process.env.LIVEKIT_API_KEY; delete process.env.LIVEKIT_API_SECRET; delete process.env.LIVEKIT_URL;
   const room = new GameRoom("V1");
-  const ws = capturingWs("u1");
-  room.addHuman(ws, "u1", "Ann");
-  room.start();
-  // Ceremony runs first; init is sent only after it resolves. Poll for init.
-  await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "init sent" });
-  const init = ws._sent.find((m) => m.t === "init");
-  assert.ok(init, "human received init");
-  assert.equal(init.voiceToken, undefined, "no voice token when unconfigured");
-  assert.equal(init.voiceRoom, undefined);
-  await waitFor(() => room.matchState === "FINISHED", { msg: "unconfigured match to finish" });
-  const ended = ws._sent.some((m) => m.t === "voiceEnd");
-  assert.equal(ended, false, "no voiceEnd emitted when voice was never configured");
-  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  restore();
+  try {
+    const ws = capturingWs("u1");
+    room.addHuman(ws, "u1", "Ann");
+    room.start();
+    // Ceremony runs first; init is sent only after it resolves. Poll for init.
+    await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "init sent" });
+    const init = ws._sent.find((m) => m.t === "init");
+    assert.ok(init, "human received init");
+    assert.equal(init.voiceToken, undefined, "no voice token when unconfigured");
+    assert.equal(init.voiceRoom, undefined);
+    await waitFor(() => room.matchState === "FINISHED", { msg: "unconfigured match to finish" });
+    const ended = ws._sent.some((m) => m.t === "voiceEnd");
+    assert.equal(ended, false, "no voiceEnd emitted when voice was never configured");
+  } finally {
+    room.clearTimers();
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    restore();
+  }
 });
 
 test("with voice configured, connected humans get all-player tokens on start and voiceEnd on end", async () => {
@@ -167,27 +190,30 @@ test("with voice configured, connected humans get all-player tokens on start and
   process.env.LIVEKIT_URL = "wss://lk.test";
 
   const room = new GameRoom("V2");
-  const ws = capturingWs("u1");
-  const seat = room.addHuman(ws, "u1", "Ann");
-  assert.notEqual(seat, -1);
+  try {
+    const ws = capturingWs("u1");
+    const seat = room.addHuman(ws, "u1", "Ann");
+    assert.notEqual(seat, -1);
 
-  // Bots never receive tokens; only the human does.
-  room.start();
-  // The lead-selection ceremony runs first; the init (with voice tokens) is sent
-  // only once it resolves and the real hand deals. Poll for it.
-  await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "voice init sent" });
-  const init = ws._sent.find((m) => m.t === "init");
-  assert.ok(init, "human received init");
-  assert.equal(init.voiceUrl, "wss://lk.test");
-  assert.equal(init.voiceRoom, "mm_V2", "token is for this match's all-player room");
-  assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part jwt");
+    // Bots never receive tokens; only the human does.
+    room.start();
+    // The lead-selection ceremony runs first; the init (with voice tokens) is sent
+    // only once it resolves and the real hand deals. Poll for it.
+    await waitFor(() => ws._sent.some((m) => m.t === "init"), { msg: "voice init sent" });
+    const init = ws._sent.find((m) => m.t === "init");
+    assert.ok(init, "human received init");
+    assert.equal(init.voiceUrl, "wss://lk.test");
+    assert.equal(init.voiceRoom, "mm_V2", "token is for this match's all-player room");
+    assert.equal(init.voiceToken && init.voiceToken.split(".").length, 3, "token is a 3-part jwt");
 
-  await waitFor(() => room.matchState === "FINISHED", { msg: "voice match to finish" });
-  assert.equal(room.matchState, "FINISHED", "match ended");
-  assert.ok(ws._sent.some((m) => m.t === "voiceEnd"), "voiceEnd broadcast at match end");
-
-  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  restore();
+    await waitFor(() => room.matchState === "FINISHED", { msg: "voice match to finish" });
+    assert.equal(room.matchState, "FINISHED", "match ended");
+    assert.ok(ws._sent.some((m) => m.t === "voiceEnd"), "voiceEnd broadcast at match end");
+  } finally {
+    room.clearTimers();
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    restore();
+  }
 });
 
 test("opposing-team humans share the same voice room (all-player voice)", async () => {
@@ -198,18 +224,21 @@ test("opposing-team humans share the same voice room (all-player voice)", async 
   process.env.LIVEKIT_URL = "wss://lk.test";
 
   const room = new GameRoom("V3");
-  const wsA = capturingWs("uA"), wsB = capturingWs("uB");
-  const sA = room.addHuman(wsA, "uA", "Ann");
-  const sB = room.addHuman(wsB, "uB", "Ben");
-  room.start();
-  // Ceremony runs first; init is sent only after it resolves. Poll for both inits.
-  await waitFor(() => wsA._sent.some((m) => m.t === "init") && wsB._sent.some((m) => m.t === "init"), { msg: "both inits sent" });
-  const initA = wsA._sent.find((m) => m.t === "init");
-  const initB = wsB._sent.find((m) => m.t === "init");
-  assert.equal(initA.voiceRoom, initB.voiceRoom, "all players share one voice room");
-  assert.notEqual(room.seats[sA].team, room.seats[sB].team, "sanity: they are on different teams");
-
-  for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  restore();
+  try {
+    const wsA = capturingWs("uA"), wsB = capturingWs("uB");
+    const sA = room.addHuman(wsA, "uA", "Ann");
+    const sB = room.addHuman(wsB, "uB", "Ben");
+    room.start();
+    // Ceremony runs first; init is sent only after it resolves. Poll for both inits.
+    await waitFor(() => wsA._sent.some((m) => m.t === "init") && wsB._sent.some((m) => m.t === "init"), { msg: "both inits sent" });
+    const initA = wsA._sent.find((m) => m.t === "init");
+    const initB = wsB._sent.find((m) => m.t === "init");
+    assert.equal(initA.voiceRoom, initB.voiceRoom, "all players share one voice room");
+    assert.notEqual(room.seats[sA].team, room.seats[sB].team, "sanity: they are on different teams");
+  } finally {
+    room.clearTimers();
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    restore();
+  }
 });
 
