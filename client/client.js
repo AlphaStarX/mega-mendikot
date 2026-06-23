@@ -94,6 +94,10 @@ const state = {
   stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
   // --- leaderboard (Phase 3) ---
   leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
+  // --- player identity (Phase 4) ---
+  playerId: null,      // shareable code (#A4F2K), or null
+  country: null,       // 2-letter ISO code, or null
+  avatar: null,        // emoji, or null
   // lobby
   room: null,
   hostSeat: null,
@@ -214,6 +218,7 @@ function handle(m) {
     case "authError": onAuthError(m); break;
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
+    case "profileUpdated": onProfileUpdated(m); break;
     case "stats": onStats(m); break;
     case "leaderboard": onLeaderboard(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
@@ -242,6 +247,9 @@ function onAuthOk(m) {
   state.userName = m.name;
   state.authenticated = true;
   if (m.stats !== undefined) state.stats = m.stats;
+  if (m.playerId !== undefined) state.playerId = m.playerId;
+  if (m.country !== undefined) state.country = m.country;
+  if (m.avatar !== undefined) state.avatar = m.avatar;
   setToken(m.token);
   clearTimeout(state._authFallback);
   // If we were waiting to join (connect deferred auth), send the join now.
@@ -281,8 +289,23 @@ function onLoggedOut() {
   state.userName = null;
   state.authenticated = false;
   state.stats = null;
+  state.playerId = null;
+  state.country = null;
+  state.avatar = null;
   refreshAuthUI();
   showScreen("join-screen");
+}
+
+// Phase 4 — server confirmed a profile edit (country/avatar). Apply the new
+// identity to local state + re-render whatever's visible.
+function onProfileUpdated(m) {
+  if (m.name !== undefined) state.userName = m.name;
+  if (m.playerId !== undefined) state.playerId = m.playerId;
+  if (m.country !== undefined) state.country = m.country;
+  if (m.avatar !== undefined) state.avatar = m.avatar;
+  refreshAuthUI();
+  const profile = $("profile-screen");
+  if (profile && !profile.classList.contains("hidden")) { renderProfile(); wireIdentitySection(); }
 }
 
 // ---------- player stats (Phase 2) ----------
@@ -322,7 +345,7 @@ function renderLeaderboard() {
     const wr = r.winRate !== null && r.winRate !== undefined ? `<span class="lb-wr">${r.winRate}%</span>` : "";
     return `<div class="lb-row${isMe ? " me" : ""}">` +
       `<span class="lb-rank">${medal || r.rank}</span>` +
-      `<span class="lb-name">${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
+      `<span class="lb-name">${r.avatar ? r.avatar + " " : ""}${r.country ? window.IDENTITY.flagEmoji(r.country) + " " : ""}${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
       `<span class="lb-record"><b>${r.wins}</b>W · ${r.losses}L · ${r.draws}D ${wr}</span>` +
       `<span class="lb-matches">${r.matchesPlayed} games</span>` +
     `</div>`;
@@ -412,9 +435,10 @@ function renderLobbySeats(m) {
     } else {
       const crown = s.seat === m.hostSeat ? " 👑" : "";
       const youTag = s.seat === state.you ? " (You)" : "";
+      const flag = s.country ? window.IDENTITY.flagEmoji(s.country) + " " : "";
       el.innerHTML =
         `<span class="ls-num">${seatTag}</span>` +
-        `<span class="ls-name">${escapeHtml(s.name)}${crown}${youTag}</span>`;
+        `<span class="ls-name">${flag}${escapeHtml(s.name)}${crown}${youTag}</span>`;
     }
     wrap.appendChild(el);
   });
@@ -862,16 +886,22 @@ function renderProfile() {
   const decisive = s.wins + s.losses;          // draws excluded from win-rate denominator
   const winRate = decisive > 0 ? Math.round((s.wins / decisive) * 100) : null;
   const initials = (state.userName || "?").slice(0, 2).toUpperCase();
-  // Header card: avatar (initials in a gold ring) + name + a one-line summary.
+  const avatarGlyph = state.avatar || initials;   // emoji if set, else initials
+  const flag = state.country ? window.IDENTITY.flagEmoji(state.country) : "";
+  // Header card: avatar (emoji or initials) + name + flag + record summary.
   wrap.innerHTML =
     // --- Player header card ---
     `<div class="profile-header">` +
-      `<div class="profile-avatar">${initials}</div>` +
+      `<div class="profile-avatar${state.avatar ? " is-emoji" : ""}">${avatarGlyph}</div>` +
       `<div class="profile-id">` +
-        `<div class="profile-name">${escapeHtml(state.userName || "Player")}</div>` +
+        `<div class="profile-name">${flag ? flag + " " : ""}${escapeHtml(state.userName || "Player")}</div>` +
         `<div class="profile-summary">${recordLine(s, winRate)}</div>` +
+        `<div class="profile-playerid">${state.playerId ? `ID <code>#${state.playerId}</code>` : ""}</div>` +
       `</div>` +
     `</div>` +
+    // --- Identity (avatar + country, editable) ---
+    `<div class="profile-section-label">Identity</div>` +
+    identitySectionHtml() +
     // --- Stat tiles (2 rows of compact tiles) ---
     `<div class="profile-section-label">Lifetime Stats</div>` +
     `<div class="stats-grid">` +
@@ -906,6 +936,73 @@ function recordLine(s, winRate) {
   if (!s.matchesPlayed) return "No matches yet — play your first game!";
   const wr = winRate !== null ? ` · ${winRate}% win rate` : "";
   return `${s.wins}W · ${s.losses}L · ${s.draws}D${wr}`;
+}
+
+// Phase 4 — the Identity edit section: shows current avatar + country with an
+// "Edit" toggle that reveals a country dropdown + avatar emoji picker + Save.
+function identitySectionHtml() {
+  const ID = window.IDENTITY;
+  const curAvatar = state.avatar || "—";
+  const curFlag = state.country ? ID.flagEmoji(state.country) + " " : "";
+  const curCountryName = state.country
+    ? (ID.COUNTRY_OPTIONS.find((c) => c.code === state.country) || {}).name || state.country
+    : "Not set";
+  // Country <select> options (None + the curated list).
+  const countryOpts = [`<option value="">— None —</option>`]
+    .concat(ID.COUNTRY_OPTIONS.map((c) =>
+      `<option value="${c.code}"${c.code === state.country ? " selected" : ""}>${ID.flagEmoji(c.code)} ${escapeHtml(c.name)}</option>`))
+    .join("");
+  // Avatar grid (clickable emoji tiles).
+  const avatarTiles = ID.AVATAR_OPTIONS.map((emo) =>
+    `<span class="avatar-pick${emo === state.avatar ? " selected" : ""}" data-emoji="${emo}">${emo}</span>`).join("");
+  return `<div class="identity-box">` +
+    `<div class="identity-current">` +
+      `<span class="identity-avatar-big">${curAvatar}</span>` +
+      `<span class="identity-country">${curFlag}${escapeHtml(curCountryName)}</span>` +
+    `</div>` +
+    `<button id="identity-edit-btn" class="link-btn" style="margin-top:8px">Edit avatar &amp; country</button>` +
+    `<div id="identity-edit" class="hidden" style="margin-top:12px">` +
+      `<div class="identity-edit-row"><label>Country</label><select id="identity-country">${countryOpts}</select></div>` +
+      `<div class="identity-edit-row"><label>Avatar</label><div class="avatar-grid">${avatarTiles}</div></div>` +
+      `<div class="identity-edit-actions">` +
+        `<button id="identity-save-btn" class="primary">Save</button>` +
+        `<button id="identity-cancel-btn" class="link-btn">Cancel</button>` +
+      `</div>` +
+      `<div id="identity-msg" class="auth-msg"></div>` +
+    `</div>` +
+  `</div>`;
+}
+
+// Wire the Identity section's Edit toggle + Save (called after renderProfile).
+function wireIdentitySection() {
+  const editBtn = $("identity-edit-btn");
+  if (editBtn) editBtn.addEventListener("click", () => { $("identity-edit").classList.remove("hidden"); editBtn.classList.add("hidden"); });
+  const cancelBtn = $("identity-cancel-btn");
+  if (cancelBtn) cancelBtn.addEventListener("click", () => { $("identity-edit").classList.add("hidden"); $("identity-edit-btn").classList.remove("hidden"); });
+  // Avatar grid: click selects (single-select, toggle off if re-clicked).
+  const grid = $("identity-edit") ? $("identity-edit").querySelector(".avatar-grid") : null;
+  if (grid) grid.addEventListener("click", (e) => {
+    const t = e.target.closest(".avatar-pick");
+    if (!t) return;
+    const wasSel = t.classList.contains("selected");
+    grid.querySelectorAll(".avatar-pick").forEach((el) => el.classList.remove("selected"));
+    if (!wasSel) t.classList.add("selected");
+  });
+  const saveBtn = $("identity-save-btn");
+  if (saveBtn) saveBtn.addEventListener("click", () => {
+    const sel = grid ? grid.querySelector(".avatar-pick.selected") : null;
+    const avatar = sel ? sel.getAttribute("data-emoji") : null;
+    const countryEl = $("identity-country");
+    const country = countryEl ? countryEl.value : "";
+    // Clearing the avatar requires an explicit click; if nothing selected, keep current.
+    send({ t: "updateProfile", country, avatar: avatar !== null ? avatar : (state.avatar || "") });
+  });
+}
+
+// What to render in an avatar circle: emoji if set, else initials.
+function avatarContent(seat) {
+  if (seat && seat.avatar) return seat.avatar;
+  return (seat && seat.name || "?").slice(0, 2).toUpperCase();
 }
 
 // A compact stat tile: icon + big value + label.
@@ -1018,9 +1115,9 @@ function renderSeats() {
       }
     }
     el.innerHTML = `
-      <div class="avatar">${initials}${timerRing}</div>
+      <div class="avatar${s.avatar ? " is-emoji" : ""}">${avatarContent(s)}${timerRing}</div>
       ${leadCardHtml}
-      <div class="name">${s.seat === state.you ? "You" : s.name}</div>
+      <div class="name">${s.country ? window.IDENTITY.flagEmoji(s.country) + " " : ""}${s.seat === state.you ? "You" : escapeHtml(s.name)}</div>
       ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
     table.appendChild(el);
   });
@@ -1405,6 +1502,7 @@ if (profileBtn) {
     // Refresh fresh stats from the server, then show the profile screen.
     send({ t: "getStats" });
     renderProfile();
+    wireIdentitySection();
     showScreen("profile-screen");
   });
 }

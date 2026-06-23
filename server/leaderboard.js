@@ -28,6 +28,8 @@ export function computeLeaderboardRows(users, { max = LEADERBOARD_MAX_ROWS } = {
       draws: u.draws || 0,
       matchesPlayed: u.matchesPlayed || 0,
       tensCaptured: u.tensCaptured || 0,
+      country: u.country || null,   // Phase 4 — rendered as a flag emoji
+      avatar: u.avatar || null,     // Phase 4 — emoji avatar
     }))
     .sort((a, b) => b.wins - a.wins || a.matchesPlayed - b.matchesPlayed || a.name.localeCompare(b.name))
     .slice(0, max)

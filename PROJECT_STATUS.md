@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (Phase 2+3 promoted to live; autoPlayPick deadlock fix; UI polish)
+> **Last updated:** 2026-06-23 (Phase 4 player identity — IDs, avatars, country flags)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -10,7 +10,7 @@
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
 > automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
-> **Tests:** 113 passing (rules + auth + livekit + bot + match + debug + stats + leaderboard); full suite ~1.1s (was a
+> **Tests:** 130 passing (rules + auth + livekit + bot + match + debug + stats + leaderboard + identity); full suite ~1.1s (was a
 > 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
@@ -168,6 +168,38 @@ Phase 2's stats columns — no new data model, one read query + one screen.
   visible) and cross-linked from the profile screen ("View Leaderboard").
 - **Tests:** +10 (`test/leaderboard.test.js`): sort, rank, tiebreak, winRate
   (incl. null on all-draws), floor filter, max cap, empty/defensive. **113/113 pass.**
+
+### ✅ Player identity — player IDs, emoji avatars, country flags (Phase 4)
+Three lightweight identity sub-features adding social/personal flair. No image
+storage — avatar is an emoji code, country a 2-letter ISO code rendered as a flag
+emoji client-side, player ID a short generated code. One additive migration.
+
+- **Player IDs** — short shareable codes (`#A4F2K` style, 5 chars from an
+  unambiguous alphabet), generated at signup (unique, immutable). Shown on the
+  profile + copyable. Sets up Phase 6 (add friends by ID). Existing accounts get
+  one via lazy backfill on next login.
+- **Country flags** — a curated ~54-country dropdown (`shared/identity.js`) set on
+  the Profile screen; renders as a flag emoji (regional-indicator algorithm)
+  next to the player's name everywhere (lobby, game seats, leaderboard, profile).
+  Empty = no flag.
+- **Emoji avatars** — a curated ~46-emoji palette picker on the Profile screen.
+  Shows in the avatar circle everywhere; unset falls back to the initials-in-a-
+  circle behavior.
+- **`shared/identity.js`** (source of truth, server+tests) + `client/identity-data.js`
+  (flat-script mirror, since the client isn't ESM): the palette + country list +
+  `flagEmoji()` + validators (`isValidCountry`/`isValidAvatar`).
+- **Signup stays minimal** (name/email/password). Country + avatar are set via a
+  Profile "Identity" → "Edit" flow (country `<select>` + emoji grid + Save). The
+  `updateProfile` message validates input against the curated lists (rejects
+  arbitrary emoji/codes) and replies `profileUpdated`.
+- **Identity flows everywhere**: `authOk` carries `playerId`/`country`/`avatar`;
+  the leaderboard query selects them; seats cache `avatar`/`country` at seat time
+  (off the `ws` set during auth — no per-broadcast DB lookup) and carry them in
+  the lobby/init/matchEnd/leadSelectEnter payloads.
+- **Tests:** +17 (`test/identity.test.js`): flagEmoji (incl. lowercase/null/junk
+  + code-point structure), country/avatar validation, generatePlayerId (length +
+  alphabet + variety), data sanity (codes unique, every code has a flag).
+  **130/130 pass.**
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -484,15 +516,15 @@ candidate work items:
   dance on prod pulls; pin the SSH deploy action to a SHA (supply-chain hardening).
 
 ### Account-system phases (DB foundation is in place)
-Phases 1–3 are done; these are additive:
+Phases 1–4 are done; these are additive:
 
 | Phase | Feature | Effort |
 |---|---|---|
 | **2** ✅ | ~~Win/loss stats + profile screen~~ — shipped (aggregates only; per-match history is a later phase) | — |
 | **3** ✅ | ~~Leaderboard (top N by wins)~~ — shipped | — |
-| **4** | Player IDs (shareable), avatars, country flags | Medium |
+| **4** ✅ | ~~Player IDs, emoji avatars, country flags~~ — shipped (no image upload; emoji palette + ISO codes) | — |
 | **5** | XP system + player levels | Medium |
-| **6** | Friends list (add by ID, invite to room) | Medium-large |
+| **6** | Friends list (add by ID, invite to room) — player IDs already in place | Medium-large |
 | **7** | Google/GitHub OAuth | Medium |
 
 ### Small standalone TODOs
