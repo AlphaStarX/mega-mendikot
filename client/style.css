@@ -356,21 +356,17 @@ body::after {
     0 14px 40px rgba(0,0,0,.6);               /* drop shadow */
   z-index: 2;
 }
-/* Center logo emblem: a gold ring framing the suit monogram, so it reads as an
-   intentional watermark (not a stray glyph). Sits behind played cards/kitty. */
+/* Center logo emblem: a faint gold monogram watermark behind played cards/kitty.
+   Pure text (no box) so it can never intercept or overlap the play area. */
 #table::before {
   content: "♠";
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   font-size: clamp(90px, 18vh, 150px);
-  color: rgba(245,197,66,.08);
-  text-shadow: 0 0 2px rgba(245,197,66,.25);
+  color: rgba(245,197,66,.07);
+  text-shadow: 0 0 30px rgba(245,197,66,.12);
   pointer-events: none; z-index: 0;
-  /* The ring: a circle outline drawn via box-shadow so it scales with the emblem. */
-  width: 110px; height: 110px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  border: 1.5px solid rgba(245,197,66,.07);
+  line-height: 1;
 }
 /* The played-cards + kitty sit at z-index ≥ 1 so they render above the emblem. */
 #table > #center { z-index: 1; }
