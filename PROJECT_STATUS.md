@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (Phase 3 leaderboard; Phase 2 stats; Task 7 lobby)
+> **Last updated:** 2026-06-23 (Phase 2+3 promoted to live; autoPlayPick deadlock fix; UI polish)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -406,8 +406,8 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 | Branch | Purpose | Status |
 |---|---|---|
 | `main` | Original baseline (initial commit only) | Untouched since first commit |
-| `live` | **Production — deployed on OVH** | Deployed; slightly behind `staging` (staging-only UI + CI work) |
-| `staging` | Active development + **auto-deploys to staging URL** | 1+ commits ahead of `live` |
+| `live` | **Production — deployed on OVH** | Deployed; **in sync with `staging`** through Phase 3 (commit `d03a55d`) |
+| `staging` | Active development + **auto-deploys to staging URL** | In sync with `live` (was ahead during dev; promoted) |
 
 **Ship-to-staging flow (automated):** just push — CI does the rest:
 ```bash
@@ -447,25 +447,24 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ## 6. Commit history (recent)
 
-> **Branch state:** `staging` is ahead of `live` by several commits (staging-only work:
-> per-team chip tracker, Lead-chip-always-visible, staging-env infra, auto-deploy CI, test
-> teardown fix, ops docs). The staging-env **infra** commit was cherry-picked to `live` so the
-> box could run staging services; the UI/CI/docs commits are still staging-only pending QA +
-> promotion. Cherry-pick SHA on `live`: `772ea38`.
+> **Branch state:** `staging` and `live` are **in sync** as of the Phase 2+3 promotion
+> (`staging` tip `1682b31`, `live` tip `d03a55d` — the merge commit that promoted Phase 2/3 +
+> the UI polish + the autoPlayPick deadlock fix). The branches diverge only as a merge-commit
+> artifact (live carries `772ea38`/the promotion merges); the deployed code is identical.
 
 ```
-eb123dc fix(test): tear down GameRoom timers so npm test exits cleanly    [staging]
-f4c7dc4 ci: verify auto-deploy loop (secrets now configured)              [staging]
-8995711 ci: auto-deploy staging branch to staging.mindikot.com            [staging]
-66c0ea8 docs: add DEPLOYMENT.md ops runbook, link from PROJECT_STATUS      [staging]
-8b53262 feat(deploy): add staging.mindikot.com preview environment        [staging+live¹]
-7a131e8 fix(ui): always render both team trackers + keep Lead chip visible [staging]
-26f7c89 feat(ui): split captured-10s tracker into two per-team panels     [staging]
-ec5725c fix(ui): hide empty captured-10s tracker at match start           [staging]
-4202fc7 docs: update PROJECT_STATUS — deployed live, all-player voice...  [staging+live]
-d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [staging+live]
+1682b31 feat(leaderboard): Phase 3 — public leaderboard by total wins         [staging+live]
+6844716 fix(profile): match record bar — correct proportions + empty state     [staging+live]
+af28432 fix(rules): autoPlayPick deadlock — undefined bestN when first suit... [staging+live]
+33b6345 style(ui): felt texture + gold seat name plates + glassmorphic HUD     [staging+live]
+efc44a9 feat(profile): rich dashboard layout for the Profile screen            [staging+live]
+2acca65 fix(ui): center emblem back to pure text                               [staging+live]
+e4b9810 feat(stats): Phase 2 — win/loss stats + Profile screen; RULEBOOK fix   [staging+live]
+9b2f2ab fix(test): guard handleTimeout auto-play + harden fastTimer tick loop  [staging+live]
+b4a6005 fix(ui): enlarge lobby seat map + compact readable chips               [staging+live]
+8380f6a feat(lobby): team selection + Play Again + party voice (Task 7)        [staging+live]
+da72974 docs: update PROJECT_STATUS                                            [staging+live]
 ```
-¹ `8b53262` was cherry-picked to `live` as `772ea38` (deploy-infra only, no UI changes).
 (Full earlier history in `git log`; initial commit was `68eda4d`.)
 
 ---
@@ -473,14 +472,16 @@ d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [stag
 ## 7. Roadmap — what's next
 
 ### 🔜 Immediate — next up
-Task 7 (team selection + Play Again + party voice) has shipped (see §2). The next
+Phases 1–3 + Task 7 are all shipped and promoted to `live` (production). The next
 candidate work items:
 
-- **QA + promote Task 7 to `live`:** it's on `staging` (auto-deploys). Eyeball the
-  seat map, a full Play Again cycle, and party voice on `staging.mindikot.com`
-  before fast-forwarding to `live`.
+- **Phase 4** — player IDs (shareable), avatars, country flags. Medium effort;
+  adds social identity on top of the account system.
 - **Mobile/touch polish** for the lobby seat-map (the oval→grid fallback works, but
   tap targets + the claim interaction want a real-device pass).
+- **Small standalone TODOs:** commit the 2 box-only deploy edits (staging build-
+  context path, LiveKit UDP range `50000-50100`) to shrink the stash-pull-pop
+  dance on prod pulls; pin the SSH deploy action to a SHA (supply-chain hardening).
 
 ### Account-system phases (DB foundation is in place)
 Phases 1–3 are done; these are additive:
@@ -528,9 +529,9 @@ Phases 1–3 are done; these are additive:
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.
-- **Task 7 (team selection + Play Again + party voice)** shipped on `staging`;
-  pending QA + promotion to `live` (see §7).
-- **OAuth, XP, friends, per-match history** — all deferred to roadmap phases.
+- **Per-match history**: Phase 2 records aggregate stats only (wins/losses/tens).
+  A scrollable match-by-match history needs a new `Match` table — a later phase.
+- **OAuth, XP, friends** — all deferred to roadmap phases (Phases 4–7).
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device
   reconnect.
