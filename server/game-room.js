@@ -299,9 +299,16 @@ export class GameRoom {
 
   handleTimeout() {
     const seat = this.seats[this.activeSeat];
+    if (!seat || !seat.hand || !seat.hand.length) return; // nothing to play
     seat.timeouts++;
     if (seat.timeouts >= 2) seat.isAfk = true;
     const card = autoPlayPick(seat.hand, this.leadSuit, this.trumpSuit);
+    // autoPlayPick can return null/undefined if no legal pick is found; guard so a
+    // thrown error here doesn't poison the recurring turn-timer tick loop.
+    if (!card) {
+      this.log.push(`auto-play had no card for seat ${this.activeSeat}; skipping.`);
+      return;
+    }
     this.playCard(this.activeSeat, card.id, /*auto=*/true);
   }
 

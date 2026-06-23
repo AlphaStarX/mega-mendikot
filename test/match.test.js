@@ -18,7 +18,14 @@ function fastTimers() {
   // match resolve in tens of ms instead of several real seconds.
   global.setInterval = (fn) => {
     const h = { _on: true };
-    const tick = () => { if (!h._on) return; try { fn(); } finally { setImmediate(tick); } };
+    // Swallow errors per-tick so a transient throw in one tick doesn't poison the
+    // recurring loop or surface as an uncaughtException (a real setInterval keeps
+    // running across a thrown callback). Mirrors production behavior in tests.
+    const tick = () => {
+      if (!h._on) return;
+      try { fn(); } catch (e) { /* one bad tick must not kill the loop */ }
+      setImmediate(tick);
+    };
     setImmediate(tick);
     return h;
   };
