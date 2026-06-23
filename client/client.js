@@ -804,13 +804,18 @@ function refreshAuthUI() {
 // ---------- player stats rendering (Phase 2) ----------
 // Render the profile screen from state.stats. Handles the null/guest case with a
 // "log in to track stats" prompt. Win rate excludes draws from the denominator.
+// Rich dashboard layout: player header card, stat tiles, a record breakdown, and
+// locked "coming soon" sections for features not yet backed by data.
 function renderProfile() {
   const wrap = $("profile-stats");
   if (!wrap) return;
   if (!state.authenticated || !state.stats) {
     wrap.innerHTML =
-      `<p class="hint" style="margin:8px 0">Log in to track your wins, losses, and Tens captured across matches.</p>` +
-      `<button id="profile-login-btn" class="primary">Log in / Sign up</button>`;
+      `<div class="profile-empty">` +
+        `<div class="profile-empty-icon">♠</div>` +
+        `<p>Log in to track your wins, losses, and Tens captured across matches.</p>` +
+        `<button id="profile-login-btn" class="primary">Log in / Sign up</button>` +
+      `</div>`;
     const login = $("profile-login-btn");
     if (login) login.addEventListener("click", () => { setAuthMode("login"); showScreen("auth-screen"); $("auth-email").focus(); });
     return;
@@ -818,21 +823,74 @@ function renderProfile() {
   const s = state.stats;
   const decisive = s.wins + s.losses;          // draws excluded from win-rate denominator
   const winRate = decisive > 0 ? Math.round((s.wins / decisive) * 100) : null;
+  const initials = (state.userName || "?").slice(0, 2).toUpperCase();
+  // Header card: avatar (initials in a gold ring) + name + a one-line summary.
   wrap.innerHTML =
-    `<div class="stats-grid">` +
-      statCard("Wins", s.wins, "var(--gold)") +
-      statCard("Losses", s.losses, "var(--red)") +
-      statCard("Draws", s.draws, "var(--muted)") +
+    // --- Player header card ---
+    `<div class="profile-header">` +
+      `<div class="profile-avatar">${initials}</div>` +
+      `<div class="profile-id">` +
+        `<div class="profile-name">${escapeHtml(state.userName || "Player")}</div>` +
+        `<div class="profile-summary">${recordLine(s, winRate)}</div>` +
+      `</div>` +
     `</div>` +
-    `<div class="stats-row">` +
-      `<span><b>${s.matchesPlayed}</b> matches played</span>` +
-      `<span><b>${s.tensCaptured}</b> Tens captured</span>` +
-      (winRate !== null ? `<span>Win rate <b>${winRate}%</b></span>` : ``) +
+    // --- Stat tiles (2 rows of compact tiles) ---
+    `<div class="profile-section-label">Lifetime Stats</div>` +
+    `<div class="stats-grid">` +
+      statTile("Wins", s.wins, "win", "✓") +
+      statTile("Losses", s.losses, "loss", "✕") +
+      statTile("Draws", s.draws, "draw", "🤝") +
+      statTile("Win Rate", winRate !== null ? winRate + "%" : "—", "rate", "%") +
+      statTile("Matches", s.matchesPlayed, "match", "♣") +
+      statTile("Tens", s.tensCaptured, "tens", "★") +
+    `</div>` +
+    // --- Match record (real aggregate breakdown, not a history list) ---
+    `<div class="profile-section-label">Match Record</div>` +
+    `<div class="record-bar">` +
+      recordSegment("Wins", s.wins, decisive > 0 ? s.wins / (s.matchesPlayed || 1) : 0, "win") +
+      recordSegment("Losses", s.losses, decisive > 0 ? s.losses / (s.matchesPlayed || 1) : 0, "loss") +
+      recordSegment("Draws", s.draws, decisive > 0 ? s.draws / (s.matchesPlayed || 1) : 0, "draw") +
+    `</div>` +
+    // --- Coming soon (features not yet backed by data) ---
+    `<div class="profile-section-label">More</div>` +
+    `<div class="profile-soon-grid">` +
+      soonTile("Match History", "Per-game results, scores & dates") +
+      soonTile("Achievements", "Badges for milestones & streaks") +
+      soonTile("Leaderboard", "Rank against other players") +
     `</div>`;
 }
 
-function statCard(label, value, color) {
-  return `<div class="stat-card"><div class="stat-value" style="color:${color}">${value}</div><div class="stat-label">${label}</div></div>`;
+// A one-line summary like "12W · 7L · 1D · 58% win rate" (hidden when 0 games).
+function recordLine(s, winRate) {
+  if (!s.matchesPlayed) return "No matches yet — play your first game!";
+  const wr = winRate !== null ? ` · ${winRate}% win rate` : "";
+  return `${s.wins}W · ${s.losses}L · ${s.draws}D${wr}`;
+}
+
+// A compact stat tile: icon + big value + label.
+function statTile(label, value, cls, icon) {
+  return `<div class="stat-tile stat-${cls}">` +
+    `<div class="stat-tile-icon">${icon}</div>` +
+    `<div class="stat-tile-value">${value}</div>` +
+    `<div class="stat-tile-label">${label}</div>` +
+  `</div>`;
+}
+
+// A horizontal record bar: each segment is a colored slice whose width is its
+// share of total matches (a visual W/L/D breakdown).
+function recordSegment(label, value, share, cls) {
+  const pct = Math.round(share * 100);
+  return `<div class="record-seg record-${cls}" style="flex:${Math.max(value, 0.001)}">` +
+    `<span class="record-seg-label">${label} ${value}${pct ? ` · ${pct}%` : ""}</span>` +
+  `</div>`;
+}
+
+// A locked "coming soon" tile for features not yet built.
+function soonTile(title, desc) {
+  return `<div class="soon-tile">` +
+    `<div class="soon-tile-title">🔒 ${title}</div>` +
+    `<div class="soon-tile-desc">${desc}</div>` +
+  `</div>`;
 }
 
 function showAuthMsg(text) {
