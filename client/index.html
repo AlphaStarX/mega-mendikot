@@ -8,48 +8,64 @@
 </head>
 <body>
   <div id="app">
-    <!-- Join / home menu screen — full-screen immersive hero -->
+    <!-- Join / home menu screen — 3-zone dashboard -->
     <section id="join-screen" class="screen">
-      <div class="hero">
-        <!-- Title block (top) -->
-        <div class="hero-title">
-          <h1>♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
-          <p class="tag">192 cards · 2 teams · 24 Tens · race to 13</p>
+      <div class="dash">
+        <!-- LEFT: navigation rail -->
+        <nav class="dash-nav">
+          <div class="dash-nav-logo">♠ MM</div>
+          <button class="dash-nav-item active" data-action="quick"><span class="dni-ico">⚡</span> Quick Match</button>
+          <button class="dash-nav-item" data-action="create"><span class="dni-ico">🔒</span> Private Room</button>
+          <button class="dash-nav-item" data-action="howto"><span class="dni-ico">📖</span> How to Play</button>
+          <button class="dash-nav-item" data-action="profile"><span class="dni-ico">📊</span> My Stats</button>
+          <button class="dash-nav-item" data-action="leaderboard"><span class="dni-ico">🏆</span> Leaderboard</button>
+          <div class="dash-nav-spacer"></div>
           <p id="auth-welcome" class="auth-welcome hidden"></p>
-        </div>
-
-        <!-- Central visual zone: floating suit cards over the felt (decorative) -->
-        <div class="hero-visual" aria-hidden="true">
-          <span class="float-card s1">♠</span>
-          <span class="float-card s2">♥</span>
-          <span class="float-card s3">♦</span>
-          <span class="float-card s4">♣</span>
-        </div>
-
-        <!-- CTA cluster (lower-center) -->
-        <div class="hero-actions">
-          <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
-          <button id="quick-btn" class="primary big">▶ Quick Match</button>
-          <div class="hero-actions-row">
-            <button id="create-btn">Create Private Room</button>
-          </div>
-          <div class="join-code-row">
-            <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
-            <button id="join-code-btn">Join</button>
-          </div>
-          <div class="hero-actions-row">
-            <button id="howto-btn">How to Play</button>
-            <button id="profile-btn" class="hidden">📊 Stats</button>
-            <button id="leaderboard-btn">🏆 Leaderboard</button>
-          </div>
-          <p class="hint">Quick Match fills empty seats with bots so you can play instantly. Open this page in two tabs to play against yourself.</p>
           <div id="auth-guest-actions" class="auth-guest-actions">
             <button id="login-btn" class="link-btn">Log in</button>
             <span class="auth-sep">·</span>
             <button id="signup-btn" class="link-btn">Sign up</button>
             <p class="hint tiny">Create an account to keep your name, stats, and reconnect from any device.</p>
           </div>
+        </nav>
+
+        <!-- CENTER: hero -->
+        <div class="dash-main">
+          <h1 class="dash-title">♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
+          <p class="dash-subtitle">192 cards · 2 teams · 24 Tens · race to 13</p>
+
+          <!-- Centerpiece: CSS-drawn fan of 3 playing cards + golden glow -->
+          <div class="card-fan" aria-hidden="true">
+            <div class="fan-card c1"><span class="fan-rank">A</span><span class="fan-suit">♠</span><span class="fan-rank fan-rank-b">A</span></div>
+            <div class="fan-card c2"><span class="fan-rank">K</span><span class="fan-suit">♠</span><span class="fan-rank fan-rank-b">K</span></div>
+            <div class="fan-card c3"><span class="fan-rank">Q</span><span class="fan-suit">♠</span><span class="fan-rank fan-rank-b">Q</span></div>
+          </div>
+
+          <!-- Primary CTAs (the canonical buttons the nav dispatches to) -->
+          <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
+          <button id="quick-btn" class="primary big">⚡ Quick Match</button>
+          <button id="create-btn" class="hidden">Create Private Room</button>
+          <button id="howto-btn" class="hidden">How to Play</button>
+          <button id="profile-btn" class="hidden">📊 Stats</button>
+          <button id="leaderboard-btn" class="hidden">🏆 Leaderboard</button>
+          <div class="join-code-row">
+            <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
+            <button id="join-code-btn">Join</button>
+          </div>
+          <p class="hint">Quick Match fills empty seats with bots so you can play instantly.</p>
         </div>
+
+        <!-- RIGHT: stats rail -->
+        <aside class="dash-stats">
+          <div class="dash-stats-card">
+            <h3>Your Stats</h3>
+            <div id="dash-mystats"></div>
+          </div>
+          <div class="dash-stats-card">
+            <h3>Top Players</h3>
+            <div id="dash-topplayers"></div>
+          </div>
+        </aside>
       </div>
     </section>
 

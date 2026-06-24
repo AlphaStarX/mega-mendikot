@@ -261,6 +261,18 @@ function onAuthOk(m) {
   // Switch back to the join screen so the user sees they're signed in.
   showScreen("join-screen");
   showMsg(`Welcome, ${state.userName}!`);
+  // Fetch fresh stats + leaderboard to populate the dashboard right rail.
+  refreshDash();
+}
+
+// Request fresh stats + leaderboard for the dashboard right rail (home screen).
+// Safe to call anytime; the handlers ignore the data if the home screen isn't up.
+function refreshDash() {
+  if (state.ws && state.ws.readyState === 1) {
+    send({ t: "getLeaderboard" });   // public; always works
+    if (state.authenticated) send({ t: "getStats" });
+    renderDashStats();               // render whatever we have immediately
+  }
 }
 
 function onAuthError(m) {
@@ -315,6 +327,9 @@ function onStats(m) {
   // If the profile screen is visible, re-render it with the fresh numbers.
   const screen = $("profile-screen");
   if (screen && !screen.classList.contains("hidden")) renderProfile();
+  // Refresh the dashboard right-rail if the home screen is visible.
+  const dash = $("dash-mystats");
+  if (dash && !$("join-screen").classList.contains("hidden")) renderDashStats();
 }
 
 // ---------- leaderboard (Phase 3) ----------
@@ -324,6 +339,9 @@ function onLeaderboard(m) {
   state.leaderboard = Array.isArray(m.rows) ? m.rows : null;
   const screen = $("leaderboard-screen");
   if (screen && !screen.classList.contains("hidden")) renderLeaderboard();
+  // Refresh the dashboard right-rail if the home screen is visible.
+  const dash = $("dash-topplayers");
+  if (dash && !$("join-screen").classList.contains("hidden")) renderDashStats();
 }
 
 // Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
@@ -352,7 +370,40 @@ function renderLeaderboard() {
   }).join("");
 }
 
-// Send a signup request over an open socket. Opens one if needed.
+// --- Dashboard right-rail: populate from state.stats + state.leaderboard ---
+function renderDashStats() {
+  const mine = $("dash-mystats");
+  const top = $("dash-topplayers");
+  // Your stats card.
+  if (mine) {
+    if (!state.authenticated || !state.stats) {
+      mine.innerHTML = `<div class="dash-stat-empty">Log in to track your stats.</div>`;
+    } else {
+      const s = state.stats;
+      mine.innerHTML =
+        `<div class="dash-stat-line"><span>Wins</span><b>${s.wins}</b></div>` +
+        `<div class="dash-stat-line"><span>Losses</span><b>${s.losses}</b></div>` +
+        `<div class="dash-stat-line"><span>Draws</span><b>${s.draws}</b></div>` +
+        `<div class="dash-stat-line"><span>Tens</span><b>${s.tensCaptured}</b></div>` +
+        `<div class="dash-stat-line"><span>Matches</span><b>${s.matchesPlayed}</b></div>`;
+    }
+  }
+  // Top players card (top 5).
+  if (top) {
+    if (!Array.isArray(state.leaderboard) || !state.leaderboard.length) {
+      top.innerHTML = `<div class="dash-stat-empty">No ranked players yet.</div>`;
+    } else {
+      top.innerHTML = state.leaderboard.slice(0, 5).map((r) => {
+        const flag = r.country ? window.IDENTITY.flagEmoji(r.country) + " " : "";
+        const av = r.avatar ? r.avatar + " " : "";
+        const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
+        return `<div class="dash-top-row"><span class="dash-top-rank">${medal}</span><span>${av}${flag}${escapeHtml(r.name)}</span></div>`;
+      }).join("");
+    }
+  }
+}
+
+
 function doSignup(email, password, name) {
   openAuthSocketIfNeeded();
   send({ t: "signup", email, password, name });
@@ -1432,6 +1483,27 @@ $("name-input").addEventListener("keydown", (e) => {
 $("code-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("join-code-btn").click();
 });
+
+// --- Dashboard nav rail: dispatch to the canonical buttons (Part 3) ---
+// The left-rail items are styled clones; clicking them triggers the real button
+// whose wiring (above) does the actual work. One delegated listener on the nav.
+const dashNav = document.querySelector(".dash-nav");
+if (dashNav) {
+  dashNav.addEventListener("click", (e) => {
+    const item = e.target.closest(".dash-nav-item[data-action]");
+    if (!item) return;
+    const action = item.getAttribute("data-action");
+    const target = {
+      quick: "quick-btn", create: "create-btn", howto: "howto-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn",
+    }[action];
+    // Highlight the clicked item + dispatch.
+    dashNav.querySelectorAll(".dash-nav-item").forEach((el) => el.classList.remove("active"));
+    item.classList.add("active");
+    const btn = target && $(target);
+    if (btn) btn.click();
+  });
+}
 $("lobby-start-btn").addEventListener("click", () => send({ t: "startGame" }));
 $("lobby-leave-btn").addEventListener("click", () => {
   disconnectVoice();

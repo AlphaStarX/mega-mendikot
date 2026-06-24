@@ -44,96 +44,134 @@ body::after {
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
-/* ---------- Home / join screen — full-screen immersive hero ---------- */
+/* ---------- Home / join screen — 3-zone dashboard ---------- */
 #join-screen { display: flex; align-items: stretch; justify-content: stretch; }
-.hero {
-  position: relative;
+.dash {
+  display: grid;
+  grid-template-columns: 220px 1fr 240px;
   width: 100%; height: 100%;
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: space-between;
-  padding: clamp(20px, 4.5vh, 52px) 20px clamp(18px, 4vh, 40px);
-  /* A felt-glow behind the hero (separate from body's vignette) for depth. */
-  text-align: center;
 }
-.hero-title { z-index: 2; }
-.hero-title h1 {
-  font-size: clamp(26px, 5.5vw, 54px);
-  margin: 0;
+
+/* LEFT: navigation rail */
+.dash-nav {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 18px 12px;
+  background: rgba(0,0,0,.32);
+  border-right: 1px solid rgba(245,197,66,.15);
+}
+.dash-nav-logo {
+  font-size: 22px; font-weight: 800; color: var(--gold);
+  text-align: center; padding: 6px 0 16px; letter-spacing: 1px;
+}
+.dash-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 10px; cursor: pointer;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600;
+  text-align: left; transition: background .12s;
+}
+.dash-nav-item .dni-ico { font-size: 16px; }
+.dash-nav-item:hover { background: rgba(245,197,66,.12); }
+.dash-nav-item.active {
+  background: linear-gradient(90deg, rgba(245,197,66,.22), transparent);
+  border-color: rgba(245,197,66,.35); color: var(--gold);
+}
+.dash-nav-spacer { flex: 1 1 auto; }
+
+/* CENTER: hero */
+.dash-main {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 20px; text-align: center; overflow-y: auto;
+}
+.dash-title {
+  font-size: clamp(24px, 4.5vw, 46px); margin: 0;
   text-shadow: 0 0 22px rgba(245,197,66,.45), 0 0 4px rgba(245,197,66,.3), 0 2px 6px rgba(0,0,0,.7);
 }
-.hero-title .tag { margin: 6px 0 0; font-size: clamp(11px, 1.6vw, 14px); }
+.dash-subtitle { margin: 6px 0 0; font-size: clamp(11px, 1.5vw, 13px); color: var(--muted); }
 
-/* Central visual zone: four suit glyphs floating gently over the felt. */
-.hero-visual {
-  position: relative; flex: 1 1 auto; width: 100%;
-  display: flex; align-items: center; justify-content: center;
-  pointer-events: none; z-index: 0;
+/* Centerpiece: CSS-drawn fan of 3 playing cards over a golden glow. */
+.card-fan {
+  position: relative; width: 260px; height: 200px; margin: 28px auto 24px;
 }
-.hero-visual::before {
-  content: ""; position: absolute; width: min(60vw, 360px); height: min(60vw, 360px);
+.card-fan::before {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 280px; height: 280px; transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(245,197,66,.06) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(245,197,66,.18) 0%, transparent 65%);
+  pointer-events: none;
 }
-.float-card {
-  position: absolute;
-  font-size: clamp(40px, 10vw, 96px);
-  opacity: .16;
-  line-height: 1;
-  text-shadow: 0 4px 18px rgba(0,0,0,.4);
-  animation: hero-float 7s ease-in-out infinite;
+.fan-card {
+  position: absolute; top: 20px; left: 50%;
+  width: 110px; height: 160px;
+  background: linear-gradient(160deg, #fdfdf8 0%, #e8e8df 100%);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.08);
+  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: 10px 8px;
+  transform-origin: 50% 100%;
 }
-.float-card.s1 { color: #fff; left: 38%; top: 28%; animation-delay: 0s; }
-.float-card.s2 { color: var(--red); left: 56%; top: 24%; animation-delay: 1.4s; }
-.float-card.s3 { color: var(--red); left: 34%; top: 50%; animation-delay: 2.8s; }
-.float-card.s4 { color: #fff; left: 60%; top: 52%; animation-delay: 4.2s; }
-@keyframes hero-float {
-  0%, 100% { transform: translateY(0) rotate(-4deg); }
-  50%      { transform: translateY(-14px) rotate(4deg); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .float-card { animation: none; }
-}
+.fan-card .fan-rank { font-size: 26px; font-weight: 800; color: #1a1a1a; align-self: flex-start; line-height: 1; }
+.fan-card .fan-rank.fan-rank-b { align-self: flex-end; transform: rotate(180deg); }
+.fan-card .fan-suit { font-size: 56px; color: #1a1a1a; line-height: 1; }
+.fan-card.c1 { transform: translateX(-50%) rotate(-18deg) translateX(-30px); z-index: 1; }
+.fan-card.c2 { transform: translateX(-50%) rotate(0deg); z-index: 3; }
+.fan-card.c3 { transform: translateX(-50%) rotate(18deg) translateX(30px); z-index: 2; }
 
-/* CTA cluster (lower-center). */
-.hero-actions {
-  z-index: 2;
-  display: flex; flex-direction: column; gap: 10px;
-  width: 100%; max-width: 360px;
-}
-.hero-actions input {
-  width: 100%; box-sizing: border-box;
+/* Primary CTA + inputs in the center. */
+.dash-main input {
+  width: 100%; max-width: 320px; box-sizing: border-box;
   padding: 12px 14px; border-radius: 10px; font-size: 15px;
   background: rgba(0,0,0,.35); color: var(--text);
-  border: 1px solid #2c5a40; outline: none;
-  text-align: center;
+  border: 1px solid #2c5a40; outline: none; text-align: center; margin-bottom: 10px;
 }
-.hero-actions input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(245,197,66,.25); }
-.hero-actions-row { display: flex; gap: 8px; }
-.hero-actions-row button { flex: 1 1 0; }
-
-/* All hero buttons share the button finish (they're not inside .card-panel). */
-.hero-actions button {
-  font-family: inherit; cursor: pointer; border: 1px solid var(--gold-deep);
-  border-radius: 10px; padding: 11px 14px; font-size: 14px; font-weight: 600;
-  color: var(--text); background: linear-gradient(180deg, #1f5a37, var(--panel));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 6px rgba(0,0,0,.4);
-  transition: transform .08s, background .12s;
-}
-.hero-actions button:hover { background: linear-gradient(180deg, #266c46, #0f3a25); }
-.hero-actions button:active { transform: translateY(2px); }
-
-/* The prominent Quick Match primary CTA — bigger, gold gradient. */
-.hero-actions .primary.big {
+.dash-main input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(245,197,66,.25); }
+.dash-main .primary.big {
   background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
-  color: #2a1c00; font-size: 17px; font-weight: 800; padding: 15px 14px;
-  border: 1px solid var(--gold-deep);
+  color: #2a1c00; font-size: 17px; font-weight: 800; padding: 15px 40px;
+  border: 1px solid var(--gold-deep); border-radius: 10px; cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(245,197,66,.3);
+  transition: transform .08s, filter .12s;
 }
-.hero-actions .primary.big:hover { filter: brightness(1.06); }
+.dash-main .primary.big:hover { filter: brightness(1.06); }
+.dash-main .primary.big:active { transform: translateY(2px); }
+.dash-main .join-code-row { margin-top: 14px; }
+.dash-main .hint { margin-top: 14px; font-size: 12px; }
 
-/* Join-code row inside the hero. */
-.hero-actions .join-code-row { margin-top: 0; }
-.hero-actions .join-code-row .code-input { width: 90px; }
+/* RIGHT: stats rail */
+.dash-stats {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 18px 14px;
+  background: rgba(0,0,0,.32);
+  border-left: 1px solid rgba(245,197,66,.15);
+  overflow-y: auto;
+}
+.dash-stats-card {
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px; padding: 14px;
+}
+.dash-stats-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); margin: 0 0 10px; }
+.dash-stat-line { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+.dash-stat-line b { color: var(--gold); }
+.dash-stat-empty { font-size: 12px; color: var(--muted); font-style: italic; }
+.dash-top-row { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 0; }
+.dash-top-rank { width: 18px; font-weight: 800; color: var(--muted); text-align: center; }
+
+/* Responsive: collapse to a single stacked column on narrow screens. */
+@media (max-width: 880px) {
+  .dash { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .dash-nav {
+    flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px;
+    border-right: none; border-bottom: 1px solid rgba(245,197,66,.15);
+  }
+  .dash-nav-logo { display: none; }
+  .dash-nav-item { padding: 8px 10px; font-size: 12px; }
+  .dash-nav-spacer { display: none; }
+  .dash-nav .auth-welcome, .dash-nav .auth-guest-actions { width: 100%; border-top: 1px solid rgba(255,255,255,.08); padding-top: 8px; }
+  .dash-stats {
+    flex-direction: row; border-left: none; border-top: 1px solid rgba(245,197,66,.15);
+  }
+  .dash-stats-card { flex: 1 1 0; }
+}
 
 .card-panel {
   position: relative;
@@ -935,12 +973,6 @@ body::after {
   .tutorial-shell { width: 96vw; height: 92vh; max-width: none; }
   .tutorial-body { font-size: 14px; }
   .tut-hand, .tut-pile { flex-wrap: wrap; }
-
-  /* Home hero: tighter on phones; float cards shrink so they don't dominate. */
-  .hero { padding: 16px 14px; }
-  .hero-visual { min-height: 80px; }
-  .float-card { font-size: clamp(32px, 12vw, 56px); opacity: .12; }
-  .hero-actions { gap: 8px; }
 
   /* Lobby: shrink the panel, drop the big oval on phones — compact 2-column grid. */
   .lobby-panel { min-width: 0; width: 96vw; padding: 16px; }
