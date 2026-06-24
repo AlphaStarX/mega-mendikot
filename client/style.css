@@ -89,34 +89,6 @@ body::after {
 }
 .dash-subtitle { margin: 6px 0 0; font-size: clamp(11px, 1.5vw, 13px); color: var(--muted); }
 
-/* Centerpiece: CSS-drawn fan of 3 playing cards over a golden glow. */
-.card-fan {
-  position: relative; width: 260px; height: 200px; margin: 28px auto 24px;
-}
-.card-fan::before {
-  content: ""; position: absolute; top: 50%; left: 50%;
-  width: 280px; height: 280px; transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(245,197,66,.18) 0%, transparent 65%);
-  pointer-events: none;
-}
-.fan-card {
-  position: absolute; top: 20px; left: 50%;
-  width: 110px; height: 160px;
-  background: linear-gradient(160deg, #fdfdf8 0%, #e8e8df 100%);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.08);
-  display: flex; flex-direction: column; align-items: center; justify-content: space-between;
-  padding: 10px 8px;
-  transform-origin: 50% 100%;
-}
-.fan-card .fan-rank { font-size: 26px; font-weight: 800; color: #1a1a1a; align-self: flex-start; line-height: 1; }
-.fan-card .fan-rank.fan-rank-b { align-self: flex-end; transform: rotate(180deg); }
-.fan-card .fan-suit { font-size: 56px; color: #1a1a1a; line-height: 1; }
-.fan-card.c1 { transform: translateX(-50%) rotate(-18deg) translateX(-30px); z-index: 1; }
-.fan-card.c2 { transform: translateX(-50%) rotate(0deg); z-index: 3; }
-.fan-card.c3 { transform: translateX(-50%) rotate(18deg) translateX(30px); z-index: 2; }
-
 /* Primary CTA + inputs in the center. */
 .dash-main input {
   width: 100%; max-width: 320px; box-sizing: border-box;
