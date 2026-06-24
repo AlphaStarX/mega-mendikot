@@ -125,7 +125,7 @@ body::after {
 
 /* ---------- Profile / Stats dashboard (Phase 2) ---------- */
 #profile-screen h1 { color: var(--gold); margin-bottom: 6px; }
-.profile-panel { min-width: 380px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+.profile-panel { min-width: 380px; max-width: 560px; width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; padding: 28px 30px; text-align: left; }
 
 /* Empty / guest state */
 .profile-empty { text-align: center; padding: 24px 0; }
@@ -209,8 +209,15 @@ body::after {
   .profile-soon-grid .soon-tile:nth-child(3) { grid-column: auto; }
 }
 
+/* Subtle scrollbar for scrollable panels (profile/leaderboard when tall). */
+.profile-panel::-webkit-scrollbar, .leaderboard-panel::-webkit-scrollbar { width: 8px; }
+.profile-panel::-webkit-scrollbar-thumb, .leaderboard-panel::-webkit-scrollbar-thumb {
+  background: rgba(245,197,66,.3); border-radius: 4px;
+}
+.profile-panel::-webkit-scrollbar-track, .leaderboard-panel::-webkit-scrollbar-track { background: transparent; }
+
 /* ---------- Leaderboard screen (Phase 3) ---------- */
-.leaderboard-panel { min-width: 360px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+.leaderboard-panel { min-width: 360px; max-width: 560px; width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; padding: 28px 30px; text-align: left; }
 .leaderboard-panel h1 { text-align: center; }
 .lb-empty { text-align: center; color: var(--muted); font-style: italic; padding: 28px 0; font-size: 14px; }
 /* Ranked rows: a flex row per player. rank | name | record | games */
@@ -251,7 +258,7 @@ body::after {
   width: 100%; padding: 8px 10px; border-radius: 8px;
   background: #0a2417; color: var(--text); border: 1px solid #2c5a40; font-size: 14px;
 }
-.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; max-height: 160px; overflow-y: auto; padding: 4px; }
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; padding: 4px; }
 .avatar-pick {
   font-size: 24px; text-align: center; padding: 4px 0; border-radius: 8px; cursor: pointer;
   background: rgba(0,0,0,.25); border: 2px solid transparent; transition: border-color .1s, background .1s;
