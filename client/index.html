@@ -31,21 +31,53 @@
 
         <!-- CENTER: hero -->
         <div class="dash-main">
-          <h1 class="dash-title">♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
+          <!-- Greeting (dynamic; falls back to title when no name) -->
+          <h1 id="dash-greeting" class="dash-title">♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
+
+          <!-- Hero card graphic: three overlapping face cards with a golden glow halo -->
+          <div class="hero-cards" aria-hidden="true">
+            <div class="hero-glow"></div>
+            <div class="hc hc-a">A<span class="hc-suit">♠</span></div>
+            <div class="hc hc-k">K<span class="hc-suit">♥</span></div>
+            <div class="hc hc-q">Q<span class="hc-suit">♣</span></div>
+          </div>
+
+          <!-- Horizontal stats strip -->
           <p class="dash-subtitle">192 cards · 2 teams · 24 Tens · race to 13</p>
 
-          <!-- Primary CTAs (the canonical buttons the nav dispatches to) -->
-          <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
-          <button id="quick-btn" class="primary big">⚡ Quick Match</button>
-          <button id="create-btn" class="hidden">Create Private Room</button>
-          <button id="howto-btn" class="hidden">How to Play</button>
-          <button id="profile-btn" class="hidden">📊 Stats</button>
-          <button id="leaderboard-btn" class="hidden">🏆 Leaderboard</button>
-          <div class="join-code-row">
-            <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
-            <button id="join-code-btn">Join</button>
+          <!-- Stacked full-width action buttons with subtext -->
+          <div class="dash-cta-stack">
+            <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
+            <button id="quick-btn" class="dash-btn primary big">
+              <span class="db-label">⚡ Quick Match</span>
+              <span class="db-sub">Jump into a game instantly</span>
+            </button>
+            <button id="create-btn" class="dash-btn green hidden">
+              <span class="db-label">🔒 Create Private Room</span>
+              <span class="db-sub">Invite up to 9 friends with a code</span>
+            </button>
+            <button id="howto-btn" class="dash-btn green hidden">
+              <span class="db-label">📖 How to Play</span>
+              <span class="db-sub">Learn the rules in 60 seconds</span>
+            </button>
+            <button id="profile-btn" class="dash-btn green hidden">
+              <span class="db-label">📊 My Stats</span>
+              <span class="db-sub">Your wins, losses &amp; history</span>
+            </button>
+            <button id="leaderboard-btn" class="dash-btn green hidden">
+              <span class="db-label">🏆 Leaderboard</span>
+              <span class="db-sub">See who's topping the table</span>
+            </button>
           </div>
-          <p class="hint">Quick Match fills empty seats with bots so you can play instantly.</p>
+
+          <!-- Room code join section -->
+          <div class="dash-roomcode">
+            <p class="drc-label">Have a Room Code?</p>
+            <div class="join-code-row">
+              <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
+              <button id="join-code-btn" class="dash-btn primary">Join</button>
+            </div>
+          </div>
         </div>
 
         <!-- RIGHT: stats rail -->

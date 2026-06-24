@@ -891,6 +891,17 @@ function showScreen(id) {
 // ---------- auth UI helpers (Phase 1) ----------
 // Reflects login state on the main menu: shows the logged-in name + logout, or
 // the "Log in / Sign up" buttons for guests.
+function renderGreeting() {
+  const h = $("dash-greeting");
+  if (!h) return;
+  if (state.authenticated && state.userName) {
+    h.textContent = `Welcome back, ${state.userName}!`;
+    h.classList.add("greeting");
+  } else {
+    h.innerHTML = `♠ Mega Mindikot <span class="red">5v5</span> ♣`;
+    h.classList.remove("greeting");
+  }
+}
 function refreshAuthUI() {
   const welcome = $("auth-welcome");
   const guestActions = $("auth-guest-actions");
@@ -911,6 +922,7 @@ function refreshAuthUI() {
     // Guests type their own name.
     if (nameInput) nameInput.classList.remove("hidden");
   }
+  renderGreeting();
   // The Profile/Stats button is only for authenticated users.
   const profileBtn = $("profile-btn");
   if (profileBtn) profileBtn.classList.toggle("hidden", !state.authenticated);
@@ -1479,6 +1491,15 @@ $("join-code-btn").addEventListener("click", () => {
 });
 $("name-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") connect(getName(), { mode: "quick" });
+});
+// Live-update the hero greeting as a guest types their name.
+$("name-input").addEventListener("input", () => {
+  if (state.authenticated) return;
+  const h = $("dash-greeting");
+  if (!h) return;
+  const n = $("name-input").value.trim();
+  if (n) { h.textContent = `Welcome, ${n}!`; h.classList.add("greeting"); }
+  else { h.innerHTML = `♠ Mega Mindikot <span class="red">5v5</span> ♣`; h.classList.remove("greeting"); }
 });
 $("code-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("join-code-btn").click();
