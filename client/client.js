@@ -843,6 +843,7 @@ function showScreen(id) {
 function refreshAuthUI() {
   const welcome = $("auth-welcome");
   const guestActions = $("auth-guest-actions");
+  const nameInput = $("name-input");
   if (state.authenticated && state.userName) {
     if (welcome) {
       welcome.classList.remove("hidden");
@@ -851,12 +852,13 @@ function refreshAuthUI() {
       if (link) link.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
     }
     if (guestActions) guestActions.classList.add("hidden");
-    // Always set the name field to the account name (don't leave a stale guest name).
-    const nameInput = $("name-input");
-    if (nameInput) nameInput.value = state.userName;
+    // Logged-in players use their account name — hide the guest name input on the hero.
+    if (nameInput) { nameInput.value = state.userName; nameInput.classList.add("hidden"); }
   } else {
     if (welcome) welcome.classList.add("hidden");
     if (guestActions) guestActions.classList.remove("hidden");
+    // Guests type their own name.
+    if (nameInput) nameInput.classList.remove("hidden");
   }
   // The Profile/Stats button is only for authenticated users.
   const profileBtn = $("profile-btn");

@@ -8,30 +8,47 @@
 </head>
 <body>
   <div id="app">
-    <!-- Join / lobby menu screen -->
+    <!-- Join / home menu screen — full-screen immersive hero -->
     <section id="join-screen" class="screen">
-      <div class="card-panel">
-        <h1>♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
-        <p class="tag">192 cards · 2 teams · 24 Tens · race to 13</p>
-        <p id="auth-welcome" class="auth-welcome hidden"></p>
-        <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
-        <div class="menu-buttons">
-          <button id="quick-btn" class="primary">Quick Match</button>
-          <button id="create-btn">Create Private Room</button>
-          <button id="howto-btn">How to Play</button>
-          <button id="profile-btn" class="hidden">📊 My Stats</button>
-          <button id="leaderboard-btn">🏆 Leaderboard</button>
+      <div class="hero">
+        <!-- Title block (top) -->
+        <div class="hero-title">
+          <h1>♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
+          <p class="tag">192 cards · 2 teams · 24 Tens · race to 13</p>
+          <p id="auth-welcome" class="auth-welcome hidden"></p>
         </div>
-        <div class="join-code-row">
-          <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
-          <button id="join-code-btn">Join</button>
+
+        <!-- Central visual zone: floating suit cards over the felt (decorative) -->
+        <div class="hero-visual" aria-hidden="true">
+          <span class="float-card s1">♠</span>
+          <span class="float-card s2">♥</span>
+          <span class="float-card s3">♦</span>
+          <span class="float-card s4">♣</span>
         </div>
-        <p class="hint">Quick Match fills empty seats with bots so you can play instantly. Open this page in two tabs to play against yourself.</p>
-        <div id="auth-guest-actions" class="auth-guest-actions">
-          <button id="login-btn" class="link-btn">Log in</button>
-          <span class="auth-sep">·</span>
-          <button id="signup-btn" class="link-btn">Sign up</button>
-          <p class="hint tiny">Create an account to keep your name, stats, and reconnect from any device.</p>
+
+        <!-- CTA cluster (lower-center) -->
+        <div class="hero-actions">
+          <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
+          <button id="quick-btn" class="primary big">▶ Quick Match</button>
+          <div class="hero-actions-row">
+            <button id="create-btn">Create Private Room</button>
+          </div>
+          <div class="join-code-row">
+            <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
+            <button id="join-code-btn">Join</button>
+          </div>
+          <div class="hero-actions-row">
+            <button id="howto-btn">How to Play</button>
+            <button id="profile-btn" class="hidden">📊 Stats</button>
+            <button id="leaderboard-btn">🏆 Leaderboard</button>
+          </div>
+          <p class="hint">Quick Match fills empty seats with bots so you can play instantly. Open this page in two tabs to play against yourself.</p>
+          <div id="auth-guest-actions" class="auth-guest-actions">
+            <button id="login-btn" class="link-btn">Log in</button>
+            <span class="auth-sep">·</span>
+            <button id="signup-btn" class="link-btn">Sign up</button>
+            <p class="hint tiny">Create an account to keep your name, stats, and reconnect from any device.</p>
+          </div>
         </div>
       </div>
     </section>

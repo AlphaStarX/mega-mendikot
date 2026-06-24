@@ -44,6 +44,97 @@ body::after {
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
+/* ---------- Home / join screen — full-screen immersive hero ---------- */
+#join-screen { display: flex; align-items: stretch; justify-content: stretch; }
+.hero {
+  position: relative;
+  width: 100%; height: 100%;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: space-between;
+  padding: clamp(20px, 4.5vh, 52px) 20px clamp(18px, 4vh, 40px);
+  /* A felt-glow behind the hero (separate from body's vignette) for depth. */
+  text-align: center;
+}
+.hero-title { z-index: 2; }
+.hero-title h1 {
+  font-size: clamp(26px, 5.5vw, 54px);
+  margin: 0;
+  text-shadow: 0 0 22px rgba(245,197,66,.45), 0 0 4px rgba(245,197,66,.3), 0 2px 6px rgba(0,0,0,.7);
+}
+.hero-title .tag { margin: 6px 0 0; font-size: clamp(11px, 1.6vw, 14px); }
+
+/* Central visual zone: four suit glyphs floating gently over the felt. */
+.hero-visual {
+  position: relative; flex: 1 1 auto; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; z-index: 0;
+}
+.hero-visual::before {
+  content: ""; position: absolute; width: min(60vw, 360px); height: min(60vw, 360px);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(245,197,66,.06) 0%, transparent 70%);
+}
+.float-card {
+  position: absolute;
+  font-size: clamp(40px, 10vw, 96px);
+  opacity: .16;
+  line-height: 1;
+  text-shadow: 0 4px 18px rgba(0,0,0,.4);
+  animation: hero-float 7s ease-in-out infinite;
+}
+.float-card.s1 { color: #fff; left: 38%; top: 28%; animation-delay: 0s; }
+.float-card.s2 { color: var(--red); left: 56%; top: 24%; animation-delay: 1.4s; }
+.float-card.s3 { color: var(--red); left: 34%; top: 50%; animation-delay: 2.8s; }
+.float-card.s4 { color: #fff; left: 60%; top: 52%; animation-delay: 4.2s; }
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%      { transform: translateY(-14px) rotate(4deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .float-card { animation: none; }
+}
+
+/* CTA cluster (lower-center). */
+.hero-actions {
+  z-index: 2;
+  display: flex; flex-direction: column; gap: 10px;
+  width: 100%; max-width: 360px;
+}
+.hero-actions input {
+  width: 100%; box-sizing: border-box;
+  padding: 12px 14px; border-radius: 10px; font-size: 15px;
+  background: rgba(0,0,0,.35); color: var(--text);
+  border: 1px solid #2c5a40; outline: none;
+  text-align: center;
+}
+.hero-actions input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(245,197,66,.25); }
+.hero-actions-row { display: flex; gap: 8px; }
+.hero-actions-row button { flex: 1 1 0; }
+
+/* All hero buttons share the button finish (they're not inside .card-panel). */
+.hero-actions button {
+  font-family: inherit; cursor: pointer; border: 1px solid var(--gold-deep);
+  border-radius: 10px; padding: 11px 14px; font-size: 14px; font-weight: 600;
+  color: var(--text); background: linear-gradient(180deg, #1f5a37, var(--panel));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 2px 6px rgba(0,0,0,.4);
+  transition: transform .08s, background .12s;
+}
+.hero-actions button:hover { background: linear-gradient(180deg, #266c46, #0f3a25); }
+.hero-actions button:active { transform: translateY(2px); }
+
+/* The prominent Quick Match primary CTA — bigger, gold gradient. */
+.hero-actions .primary.big {
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
+  color: #2a1c00; font-size: 17px; font-weight: 800; padding: 15px 14px;
+  border: 1px solid var(--gold-deep);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(245,197,66,.3);
+}
+.hero-actions .primary.big:hover { filter: brightness(1.06); }
+
+/* Join-code row inside the hero. */
+.hero-actions .join-code-row { margin-top: 0; }
+.hero-actions .join-code-row .code-input { width: 90px; }
+
 .card-panel {
   position: relative;
   background: linear-gradient(180deg, #18502f 0%, var(--panel) 100%);
@@ -844,6 +935,12 @@ body::after {
   .tutorial-shell { width: 96vw; height: 92vh; max-width: none; }
   .tutorial-body { font-size: 14px; }
   .tut-hand, .tut-pile { flex-wrap: wrap; }
+
+  /* Home hero: tighter on phones; float cards shrink so they don't dominate. */
+  .hero { padding: 16px 14px; }
+  .hero-visual { min-height: 80px; }
+  .float-card { font-size: clamp(32px, 12vw, 56px); opacity: .12; }
+  .hero-actions { gap: 8px; }
 
   /* Lobby: shrink the panel, drop the big oval on phones — compact 2-column grid. */
   .lobby-panel { min-width: 0; width: 96vw; padding: 16px; }
