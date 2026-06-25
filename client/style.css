@@ -90,38 +90,38 @@ body::after {
 .dash-title.greeting { font-size: clamp(26px, 4.4vw, 40px); }
 .dash-title .red { color: var(--red); }
 .dash-subtitle {
-  margin: 12px 0 18px; font-size: clamp(11px, 1.5vw, 13px); color: var(--gold-light);
+  margin: 10px 0 14px; font-size: clamp(11px, 1.5vw, 13px); color: var(--gold-light);
   letter-spacing: .5px; background: rgba(0,0,0,.3); border: 1px solid rgba(245,197,66,.2);
   padding: 6px 16px; border-radius: 999px; white-space: nowrap;
 }
 
 /* Hero card graphic — three fanned playing cards (A♠ / K♥ / Q♣) behind a warm
-   golden glow, matched to the reference design. Real card markup: corner index
-   (rank stacked over a small suit) + large centered pip + a varnished gloss. */
+   golden glow, matched to the reference design. Scaled up to be the dominant
+   centerpiece of the center column (was too small → the hero looked empty). */
 .hero-cards {
-  position: relative; height: 168px; width: 248px; margin: 10px auto 4px;
+  position: relative; height: 230px; width: 330px; margin: 6px auto 2px;
   display: flex; justify-content: center; align-items: center;
 }
-/* Warm amber halo behind the fan — richer + more contained than the old wash. */
+/* Warm amber halo behind the fan — wider + richer to fill the larger graphic. */
 .hero-glow {
   position: absolute; left: 50%; top: 48%;
-  width: 280px; height: 190px;
+  width: 370px; height: 250px;
   transform: translate(-50%, -50%);
   background: radial-gradient(ellipse at center,
-    rgba(245,197,66,.55) 0%, rgba(245,197,66,.22) 38%, rgba(245,197,66,.05) 60%, transparent 74%);
-  filter: blur(10px); z-index: 0; pointer-events: none;
+    rgba(245,197,66,.55) 0%, rgba(245,197,66,.24) 38%, rgba(245,197,66,.05) 60%, transparent 74%);
+  filter: blur(12px); z-index: 0; pointer-events: none;
 }
 /* The card face: ivory gradient, gold hairline, varnished gloss, deep shadow. */
 .hc {
-  position: absolute; width: 96px; height: 136px; border-radius: 9px;
+  position: absolute; width: 132px; height: 186px; border-radius: 12px;
   background: linear-gradient(160deg, #fffdf4 0%, #fbf4e0 55%, #f1e6c4 100%);
   border: 1px solid #caa84e;
   box-shadow:
     inset 0 0 0 1px rgba(255,255,255,.6),            /* top-edge gleam */
     inset 0 0 0 2px rgba(202,168,78,.18),            /* faint inner gold */
     0 1px 1px rgba(0,0,0,.25),                        /* contact shadow */
-    0 14px 30px rgba(0,0,0,.6),                       /* deep drop shadow */
-    0 6px 12px rgba(0,0,0,.35);
+    0 18px 38px rgba(0,0,0,.62),                      /* deep drop shadow */
+    0 8px 16px rgba(0,0,0,.35);
   display: flex; align-items: center; justify-content: center;
   font-family: Georgia, "Times New Roman", serif; font-weight: 800;
   overflow: hidden; z-index: 1;
@@ -137,24 +137,24 @@ body::after {
   position: absolute; display: flex; flex-direction: column; align-items: center;
   line-height: 1; z-index: 2;
 }
-.hc-corner .hc-rank { font-size: 16px; font-weight: 800; }
-.hc-corner .hc-suit { font-size: 13px; margin-top: 1px; }
-.hc-tl { top: 6px; left: 7px; }
+.hc-corner .hc-rank { font-size: 22px; font-weight: 800; }
+.hc-corner .hc-suit { font-size: 18px; margin-top: 1px; }
+.hc-tl { top: 8px; left: 10px; }
 /* Bottom-right index is rotated 180° so it reads from the opposite end. */
-.hc-br { bottom: 6px; right: 7px; transform: rotate(180deg); }
+.hc-br { bottom: 8px; right: 10px; transform: rotate(180deg); }
 /* Large centered pip. */
 .hc-pip {
-  position: relative; z-index: 1; font-size: 56px; line-height: 1;
+  position: relative; z-index: 1; font-size: 78px; line-height: 1;
   text-shadow: 0 1px 0 rgba(0,0,0,.08);
 }
 /* Fan arrangement: left tilted back, center raised + front-most, right tilted back. */
-.hc-a { left: 20px; top: 18px; transform: rotate(-14deg); color: #161616; }
-.hc-k { left: 50%; top: 4px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
-.hc-q { right: 20px; top: 18px; transform: rotate(14deg); color: #161616; }
+.hc-a { left: 24px; top: 24px; transform: rotate(-14deg); color: #161616; }
+.hc-k { left: 50%; top: 6px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
+.hc-q { right: 24px; top: 24px; transform: rotate(14deg); color: #161616; }
 /* Lift the whole stack slightly on hover for a touch of life (decorative only). */
-.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-4px); }
-.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-2px) translateX(-3px); }
-.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-2px) translateX(3px); }
+.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-6px); }
+.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-3px) translateX(-4px); }
+.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-3px) translateX(4px); }
 .hc, .hero-cards:hover .hc-a, .hero-cards:hover .hc-k, .hero-cards:hover .hc-q {
   transition: transform .18s ease;
 }
@@ -235,12 +235,13 @@ body::after {
     flex-direction: row; border-left: none; border-top: 1px solid rgba(245,197,66,.15);
   }
   .dash-stats-card { flex: 1 1 0; }
-  /* Hero card fan: shrink on narrow screens so the whole fan fits the column. */
-  .hero-cards { transform: scale(.82); transform-origin: center top; margin-bottom: 0; }
+  /* Hero card fan: shrink on narrow screens so the whole fan fits the column.
+     The base graphic is now larger (330px wide), so scale down more aggressively. */
+  .hero-cards { transform: scale(.72); transform-origin: center top; margin-bottom: 0; }
 }
 
 @media (max-width: 480px) {
-  .hero-cards { transform: scale(.7); }
+  .hero-cards { transform: scale(.56); }
 }
 
 .card-panel {
