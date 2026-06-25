@@ -911,9 +911,9 @@ function refreshAuthUI() {
   if (state.authenticated && state.userName) {
     if (welcome) {
       welcome.classList.remove("hidden");
-      welcome.innerHTML = `Signed in as <b>${state.userName}</b> · <a href="#" id="logout-link">Log out</a>`;
-      const link = $("logout-link");
-      if (link) link.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
+      welcome.innerHTML = `<span class="auth-signed-in">Signed in as <b>${state.userName}</b></span><button id="logout-btn" class="topbar-btn logout" title="Log out">Log out</button>`;
+      const outBtn = $("logout-btn");
+      if (outBtn) outBtn.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
     }
     if (guestActions) guestActions.classList.add("hidden");
     // Logged-in players use their account name — hide the guest name input on the hero.

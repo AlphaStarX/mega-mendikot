@@ -71,8 +71,11 @@ body::after {
 .topbar-name { font-size: 18px; font-weight: 800; letter-spacing: .5px; }
 .topbar-name .red { color: var(--red); }
 .topbar-auth { display: flex; align-items: center; gap: 10px; }
-/* auth-welcome (signed-in) injected by JS; auth-guest-actions toggled. */
-.dash-topbar .auth-welcome { margin: 0; font-size: 13px; color: var(--text); }
+/* auth-welcome (signed-in) injected by JS; holds "Signed in as" + a Log out button. */
+.dash-topbar .auth-welcome {
+  margin: 0; font-size: 13px; color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+}
 .dash-topbar .auth-welcome b { color: var(--gold); }
 .dash-topbar .auth-welcome a { color: var(--muted); text-decoration: underline; cursor: pointer; }
 .dash-topbar .auth-guest-actions { display: flex; gap: 8px; align-items: center; }
@@ -88,6 +91,11 @@ body::after {
   color: #2a1c00; border-color: var(--gold-deep);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 8px rgba(245,197,66,.3);
 }
+/* Log out: red/destructive accent to signal it ends the session. */
+.topbar-btn.logout {
+  background: rgba(80,12,12,.45); color: #ffd6d6; border-color: var(--red);
+}
+.topbar-btn.logout:hover { background: var(--red); color: #fff; }
 
 /* ===== BODY: 3 columns ===== */
 .dash-body {
@@ -103,10 +111,9 @@ body::after {
   background: rgba(0,0,0,.32);
   border-right: 1px solid rgba(245,197,66,.15);
 }
-.dash-nav-logo {
-  font-size: 22px; font-weight: 800; color: var(--gold);
-  text-align: center; padding: 4px 0 14px; letter-spacing: 1px;
-}
+/* The logo block was removed from the rail; keep a little top breathing
+   room so the first nav item (Home) isn't flush to the top edge. */
+.dash-nav { padding-top: 18px; }
 .dash-nav-item {
   display: flex; align-items: center; gap: 10px;
   padding: 11px 14px; border-radius: 10px; cursor: pointer;
@@ -235,6 +242,7 @@ body::after {
   border-radius: 12px; padding: 10px 4px;
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
+.hero-stat-ico { font-size: 18px; line-height: 1; margin-bottom: 2px; }
 .hero-stat b { font-size: 20px; color: var(--gold); line-height: 1; }
 .hero-stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 
@@ -250,8 +258,8 @@ body::after {
 
 .dash-btn {
   width: 100%; box-sizing: border-box; padding: 12px 18px; border-radius: 12px; cursor: pointer;
-  font-family: inherit; text-align: left; border: 1px solid transparent;
-  display: flex; flex-direction: column; gap: 2px;
+  font-family: inherit; text-align: center; border: 1px solid transparent;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
   transition: transform .08s, filter .12s, background .12s;
 }
 .dash-btn .db-label { font-size: 16px; font-weight: 800; }
