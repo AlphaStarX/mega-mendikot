@@ -34,12 +34,29 @@
           <!-- Greeting (dynamic; falls back to title when no name) -->
           <h1 id="dash-greeting" class="dash-title">♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
 
-          <!-- Hero card graphic: three overlapping face cards with a golden glow halo -->
+          <!-- Hero card graphic: three overlapping face cards with a golden glow halo.
+               Proper playing-card markup: corner index (rank over suit) + large center pip,
+               rendered fanned A♠ / K♥ / Q♣ to match the reference design. -->
           <div class="hero-cards" aria-hidden="true">
             <div class="hero-glow"></div>
-            <div class="hc hc-a">A<span class="hc-suit">♠</span></div>
-            <div class="hc hc-k">K<span class="hc-suit">♥</span></div>
-            <div class="hc hc-q">Q<span class="hc-suit">♣</span></div>
+            <div class="hc hc-a">
+              <div class="hc-corner hc-tl"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
+              <div class="hc-pip">♠</div>
+              <div class="hc-corner hc-br"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
+              <div class="hc-gloss"></div>
+            </div>
+            <div class="hc hc-k">
+              <div class="hc-corner hc-tl"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
+              <div class="hc-pip">♥</div>
+              <div class="hc-corner hc-br"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
+              <div class="hc-gloss"></div>
+            </div>
+            <div class="hc hc-q">
+              <div class="hc-corner hc-tl"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
+              <div class="hc-pip">♣</div>
+              <div class="hc-corner hc-br"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
+              <div class="hc-gloss"></div>
+            </div>
           </div>
 
           <!-- Horizontal stats strip -->

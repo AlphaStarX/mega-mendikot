@@ -95,29 +95,69 @@ body::after {
   padding: 6px 16px; border-radius: 999px; white-space: nowrap;
 }
 
-/* Hero card graphic — three overlapping face cards behind a golden glow. */
+/* Hero card graphic — three fanned playing cards (A♠ / K♥ / Q♣) behind a warm
+   golden glow, matched to the reference design. Real card markup: corner index
+   (rank stacked over a small suit) + large centered pip + a varnished gloss. */
 .hero-cards {
-  position: relative; height: 150px; width: 220px; margin: 6px auto 0;
+  position: relative; height: 168px; width: 248px; margin: 10px auto 4px;
   display: flex; justify-content: center; align-items: center;
 }
+/* Warm amber halo behind the fan — richer + more contained than the old wash. */
 .hero-glow {
-  position: absolute; left: 50%; top: 50%; width: 230px; height: 170px;
+  position: absolute; left: 50%; top: 48%;
+  width: 280px; height: 190px;
   transform: translate(-50%, -50%);
-  background: radial-gradient(ellipse at center, rgba(245,197,66,.5) 0%, rgba(245,197,66,.12) 45%, transparent 72%);
-  filter: blur(8px); z-index: 0;
+  background: radial-gradient(ellipse at center,
+    rgba(245,197,66,.55) 0%, rgba(245,197,66,.22) 38%, rgba(245,197,66,.05) 60%, transparent 74%);
+  filter: blur(10px); z-index: 0; pointer-events: none;
 }
+/* The card face: ivory gradient, gold hairline, varnished gloss, deep shadow. */
 .hc {
-  position: absolute; width: 86px; height: 122px; border-radius: 9px;
-  background: linear-gradient(160deg, #fffdf3 0%, #f6efd9 100%);
-  box-shadow: 0 10px 26px rgba(0,0,0,.55), inset 0 0 0 2px rgba(245,197,66,.5);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-family: Georgia, "Times New Roman", serif; font-weight: 800; font-size: 38px; line-height: 1;
-  z-index: 1;
+  position: absolute; width: 96px; height: 136px; border-radius: 9px;
+  background: linear-gradient(160deg, #fffdf4 0%, #fbf4e0 55%, #f1e6c4 100%);
+  border: 1px solid #caa84e;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.6),            /* top-edge gleam */
+    inset 0 0 0 2px rgba(202,168,78,.18),            /* faint inner gold */
+    0 1px 1px rgba(0,0,0,.25),                        /* contact shadow */
+    0 14px 30px rgba(0,0,0,.6),                       /* deep drop shadow */
+    0 6px 12px rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-family: Georgia, "Times New Roman", serif; font-weight: 800;
+  overflow: hidden; z-index: 1;
 }
-.hc .hc-suit { font-size: 34px; margin-top: 2px; }
-.hc-a { left: 22px; top: 14px; transform: rotate(-13deg); color: #1a1a1a; }
-.hc-k { left: 50%; top: 6px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 2; }
-.hc-q { right: 22px; top: 14px; transform: rotate(13deg); color: #1a1a1a; }
+/* Diagonal gloss sheen — the "varnished card" look. Sits above the ink. */
+.hc-gloss {
+  position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  background: linear-gradient(125deg,
+    rgba(255,255,255,.5) 0%, rgba(255,255,255,.12) 22%, transparent 42%);
+}
+/* Corner index: rank over suit, stacked tight in the corner. */
+.hc-corner {
+  position: absolute; display: flex; flex-direction: column; align-items: center;
+  line-height: 1; z-index: 2;
+}
+.hc-corner .hc-rank { font-size: 16px; font-weight: 800; }
+.hc-corner .hc-suit { font-size: 13px; margin-top: 1px; }
+.hc-tl { top: 6px; left: 7px; }
+/* Bottom-right index is rotated 180° so it reads from the opposite end. */
+.hc-br { bottom: 6px; right: 7px; transform: rotate(180deg); }
+/* Large centered pip. */
+.hc-pip {
+  position: relative; z-index: 1; font-size: 56px; line-height: 1;
+  text-shadow: 0 1px 0 rgba(0,0,0,.08);
+}
+/* Fan arrangement: left tilted back, center raised + front-most, right tilted back. */
+.hc-a { left: 20px; top: 18px; transform: rotate(-14deg); color: #161616; }
+.hc-k { left: 50%; top: 4px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
+.hc-q { right: 20px; top: 18px; transform: rotate(14deg); color: #161616; }
+/* Lift the whole stack slightly on hover for a touch of life (decorative only). */
+.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-4px); }
+.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-2px) translateX(-3px); }
+.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-2px) translateX(3px); }
+.hc, .hero-cards:hover .hc-a, .hero-cards:hover .hc-k, .hero-cards:hover .hc-q {
+  transition: transform .18s ease;
+}
 
 /* Stacked full-width action buttons. */
 .dash-cta-stack { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 10px; }
@@ -195,6 +235,12 @@ body::after {
     flex-direction: row; border-left: none; border-top: 1px solid rgba(245,197,66,.15);
   }
   .dash-stats-card { flex: 1 1 0; }
+  /* Hero card fan: shrink on narrow screens so the whole fan fits the column. */
+  .hero-cards { transform: scale(.82); transform-origin: center top; margin-bottom: 0; }
+}
+
+@media (max-width: 480px) {
+  .hero-cards { transform: scale(.7); }
 }
 
 .card-panel {
