@@ -8,106 +8,158 @@
 </head>
 <body>
   <div id="app">
-    <!-- Join / home menu screen — 3-zone dashboard -->
+    <!-- Join / home menu screen — premium dashboard (topbar + 3-col body + footer) -->
     <section id="join-screen" class="screen">
       <div class="dash">
-        <!-- LEFT: navigation rail -->
-        <nav class="dash-nav">
-          <div class="dash-nav-logo">♠ MM</div>
-          <button class="dash-nav-item active" data-action="quick"><span class="dni-ico">⚡</span> Quick Match</button>
-          <button class="dash-nav-item" data-action="create"><span class="dni-ico">🔒</span> Private Room</button>
-          <button class="dash-nav-item" data-action="howto"><span class="dni-ico">📖</span> How to Play</button>
-          <button class="dash-nav-item" data-action="profile"><span class="dni-ico">📊</span> My Stats</button>
-          <button class="dash-nav-item" data-action="leaderboard"><span class="dni-ico">🏆</span> Leaderboard</button>
-          <div class="dash-nav-spacer"></div>
-          <p id="auth-welcome" class="auth-welcome hidden"></p>
-          <div id="auth-guest-actions" class="auth-guest-actions">
-            <button id="login-btn" class="link-btn">Log in</button>
-            <span class="auth-sep">·</span>
-            <button id="signup-btn" class="link-btn">Sign up</button>
-            <p class="hint tiny">Create an account to keep your name, stats, and reconnect from any device.</p>
+
+        <!-- ===== TOP NAV BAR ===== -->
+        <header class="dash-topbar">
+          <div class="topbar-brand">
+            <span class="topbar-logo">♠</span>
+            <span class="topbar-name">Mega Mindikot <span class="red">5v5</span></span>
           </div>
-        </nav>
-
-        <!-- CENTER: hero -->
-        <div class="dash-main">
-          <!-- Greeting (dynamic; falls back to title when no name) -->
-          <h1 id="dash-greeting" class="dash-title">♠ Mega Mindikot <span class="red">5v5</span> ♣</h1>
-
-          <!-- Hero card graphic: three overlapping face cards with a golden glow halo.
-               Proper playing-card markup: corner index (rank over suit) + large center pip,
-               rendered fanned A♠ / K♥ / Q♣ to match the reference design. -->
-          <div class="hero-cards" aria-hidden="true">
-            <div class="hero-glow"></div>
-            <div class="hc hc-a">
-              <div class="hc-corner hc-tl"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
-              <div class="hc-pip">♠</div>
-              <div class="hc-corner hc-br"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
-              <div class="hc-gloss"></div>
-            </div>
-            <div class="hc hc-k">
-              <div class="hc-corner hc-tl"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
-              <div class="hc-pip">♥</div>
-              <div class="hc-corner hc-br"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
-              <div class="hc-gloss"></div>
-            </div>
-            <div class="hc hc-q">
-              <div class="hc-corner hc-tl"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
-              <div class="hc-pip">♣</div>
-              <div class="hc-corner hc-br"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
-              <div class="hc-gloss"></div>
+          <div class="topbar-auth">
+            <!-- auth-welcome (signed-in) and auth-guest-actions (signed-out) are
+                 toggled by refreshAuthUI(). Both must keep their IDs. -->
+            <p id="auth-welcome" class="auth-welcome hidden"></p>
+            <div id="auth-guest-actions" class="auth-guest-actions">
+              <button id="login-btn" class="topbar-btn">Log in</button>
+              <button id="signup-btn" class="topbar-btn gold">Sign up</button>
             </div>
           </div>
+        </header>
 
-          <!-- Horizontal stats strip -->
-          <p class="dash-subtitle">192 cards · 2 teams · 24 Tens · race to 13</p>
+        <!-- ===== BODY: 3 columns ===== -->
+        <div class="dash-body">
 
-          <!-- Stacked full-width action buttons with subtext -->
-          <div class="dash-cta-stack">
-            <input id="name-input" type="text" maxlength="20" placeholder="Your name" />
-            <button id="quick-btn" class="dash-btn primary big">
-              <span class="db-label">⚡ Quick Match</span>
-              <span class="db-sub">Jump into a game instantly</span>
-            </button>
-            <button id="create-btn" class="dash-btn green hidden">
-              <span class="db-label">🔒 Create Private Room</span>
-              <span class="db-sub">Invite up to 9 friends with a code</span>
-            </button>
-            <button id="howto-btn" class="dash-btn green hidden">
-              <span class="db-label">📖 How to Play</span>
-              <span class="db-sub">Learn the rules in 60 seconds</span>
-            </button>
-            <button id="profile-btn" class="dash-btn green hidden">
-              <span class="db-label">📊 My Stats</span>
-              <span class="db-sub">Your wins, losses &amp; history</span>
-            </button>
-            <button id="leaderboard-btn" class="dash-btn green hidden">
-              <span class="db-label">🏆 Leaderboard</span>
-              <span class="db-sub">See who's topping the table</span>
-            </button>
-          </div>
+          <!-- LEFT: navigation rail + info chips -->
+          <nav class="dash-nav">
+            <div class="dash-nav-logo">♠ MM</div>
+            <button class="dash-nav-item active" data-action="quick"><span class="dni-ico">🏠</span> Home</button>
+            <button class="dash-nav-item" data-action="quick"><span class="dni-ico">⚡</span> Quick Match</button>
+            <button class="dash-nav-item" data-action="create"><span class="dni-ico">🔒</span> Private Room</button>
+            <button class="dash-nav-item" data-action="howto"><span class="dni-ico">📖</span> How to Play</button>
+            <button class="dash-nav-item" data-action="profile"><span class="dni-ico">📊</span> My Stats</button>
+            <button class="dash-nav-item" data-action="leaderboard"><span class="dni-ico">🏆</span> Leaderboard</button>
 
-          <!-- Room code join section -->
-          <div class="dash-roomcode">
-            <p class="drc-label">Have a Room Code?</p>
-            <div class="join-code-row">
-              <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
-              <button id="join-code-btn" class="dash-btn primary">Join</button>
+            <div class="dash-nav-info">
+              <div class="dash-chip">
+                <span class="dash-chip-ico">🟢</span>
+                <div><b id="dash-online">—</b><span class="dash-chip-sub">Online Players</span></div>
+              </div>
+              <div class="dash-chip">
+                <span class="dash-chip-ico">🃏</span>
+                <div><b id="dash-rooms">—</b><span class="dash-chip-sub">Active Rooms</span></div>
+              </div>
+              <button class="dash-chip-link" data-action="create">
+                <span class="dash-chip-ico">💬</span>
+                <span>Community</span>
+              </button>
             </div>
-          </div>
+          </nav>
+
+          <!-- CENTER: hero -->
+          <main class="dash-main">
+            <section class="hero-panel">
+              <h1 id="dash-greeting" class="dash-title">Welcome Back</h1>
+              <p class="dash-subtitle-text">The ultimate 5v5 trick-taking card game</p>
+
+              <!-- Hero card graphic: three fanned face cards with a golden glow. -->
+              <div class="hero-cards" aria-hidden="true">
+                <div class="hero-glow"></div>
+                <div class="hc hc-a">
+                  <div class="hc-corner hc-tl"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
+                  <div class="hc-pip">♠</div>
+                  <div class="hc-corner hc-br"><span class="hc-rank">A</span><span class="hc-suit">♠</span></div>
+                  <div class="hc-gloss"></div>
+                </div>
+                <div class="hc hc-k">
+                  <div class="hc-corner hc-tl"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
+                  <div class="hc-pip">♥</div>
+                  <div class="hc-corner hc-br"><span class="hc-rank">K</span><span class="hc-suit">♥</span></div>
+                  <div class="hc-gloss"></div>
+                </div>
+                <div class="hc hc-q">
+                  <div class="hc-corner hc-tl"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
+                  <div class="hc-pip">♣</div>
+                  <div class="hc-corner hc-br"><span class="hc-rank">Q</span><span class="hc-suit">♣</span></div>
+                  <div class="hc-gloss"></div>
+                </div>
+              </div>
+
+              <!-- Stats row: the game's signature numbers. -->
+              <div class="hero-stats">
+                <div class="hero-stat"><b>192</b><span>Cards</span></div>
+                <div class="hero-stat"><b>2</b><span>Teams</span></div>
+                <div class="hero-stat"><b>24</b><span>Tens</span></div>
+                <div class="hero-stat"><b>13</b><span>Race to 13</span></div>
+                <div class="hero-stat"><b>5v5</b><span>Mode</span></div>
+              </div>
+            </section>
+
+            <!-- Action buttons -->
+            <div class="dash-cta-stack">
+              <input id="name-input" type="text" maxlength="20" placeholder="Enter your name" />
+              <button id="quick-btn" class="dash-btn primary big">
+                <span class="db-label">⚡ Quick Match</span>
+                <span class="db-sub">Jump into a game instantly</span>
+              </button>
+              <button id="create-btn" class="dash-btn green hidden">
+                <span class="db-label">🔒 Create Private Room</span>
+                <span class="db-sub">Invite up to 9 friends with a code</span>
+              </button>
+              <button id="howto-btn" class="dash-btn green hidden">
+                <span class="db-label">📖 How to Play</span>
+                <span class="db-sub">Learn the rules in 60 seconds</span>
+              </button>
+              <button id="profile-btn" class="dash-btn green hidden">
+                <span class="db-label">📊 My Stats</span>
+                <span class="db-sub">Your wins, losses &amp; history</span>
+              </button>
+              <button id="leaderboard-btn" class="dash-btn green hidden">
+                <span class="db-label">🏆 Leaderboard</span>
+                <span class="db-sub">See who's topping the table</span>
+              </button>
+            </div>
+
+            <!-- Room code join section -->
+            <div class="dash-roomcode">
+              <p class="drc-label">Room Code</p>
+              <div class="join-code-row">
+                <input id="code-input" type="text" maxlength="4" placeholder="ROOM" class="code-input" />
+                <button id="join-code-btn" class="dash-btn primary">Join</button>
+              </div>
+              <p class="drc-help">Got a 4-letter code from a friend? Enter it to join their private room.</p>
+            </div>
+          </main>
+
+          <!-- RIGHT: stats rail -->
+          <aside class="dash-stats">
+            <div class="dash-stats-card">
+              <h3>Your Stats</h3>
+              <div id="dash-mystats"></div>
+            </div>
+            <div class="dash-stats-card">
+              <h3>Top Players</h3>
+              <div id="dash-topplayers"></div>
+            </div>
+            <div class="dash-stats-card promo">
+              <h3>Create a Room</h3>
+              <p>Invite up to 9 friends with a private code.</p>
+              <button class="promo-btn" data-action="create">Create Room</button>
+            </div>
+          </aside>
         </div>
 
-        <!-- RIGHT: stats rail -->
-        <aside class="dash-stats">
-          <div class="dash-stats-card">
-            <h3>Your Stats</h3>
-            <div id="dash-mystats"></div>
-          </div>
-          <div class="dash-stats-card">
-            <h3>Top Players</h3>
-            <div id="dash-topplayers"></div>
-          </div>
-        </aside>
+        <!-- ===== FOOTER ===== -->
+        <footer class="dash-footer">
+          <span>© 2026 Mega Mindikot 5v5</span>
+          <span class="dash-footer-links">
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms</a>
+            <a href="#">Contact</a>
+          </span>
+        </footer>
       </div>
     </section>
 

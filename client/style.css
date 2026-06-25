@@ -44,27 +44,68 @@ body::after {
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
-/* ---------- Home / join screen — 3-zone dashboard ---------- */
-#join-screen { display: flex; align-items: stretch; justify-content: center; }
+/* ---------- Home / join screen — premium dashboard ----------
+   Layout: top nav bar + 3-column body (nav | hero | stats) + footer.
+   Every zone is a gold-bordered glass panel so the screen reads as full,
+   not empty. */
+#join-screen { display: block; align-items: stretch; justify-content: stretch; }
 .dash {
   display: grid;
-  grid-template-columns: 220px 1fr 240px;
-  width: 100%; max-width: 1240px; height: 100%;
-  margin: 0 auto;
-  /* subtle inner border so the bounded dashboard reads as a unit on ultra-wide screens */
+  grid-template-rows: auto 1fr auto;
+  width: 100%; height: 100%;
   box-shadow: 0 0 0 1px rgba(245,197,66,.08);
 }
 
-/* LEFT: navigation rail */
+/* ===== TOP NAV BAR ===== */
+.dash-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px;
+  background: rgba(0,0,0,.4);
+  border-bottom: 1px solid rgba(245,197,66,.18);
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.topbar-logo {
+  font-size: 26px; color: var(--gold);
+  text-shadow: 0 0 12px rgba(245,197,66,.5); line-height: 1;
+}
+.topbar-name { font-size: 18px; font-weight: 800; letter-spacing: .5px; }
+.topbar-name .red { color: var(--red); }
+.topbar-auth { display: flex; align-items: center; gap: 10px; }
+/* auth-welcome (signed-in) injected by JS; auth-guest-actions toggled. */
+.dash-topbar .auth-welcome { margin: 0; font-size: 13px; color: var(--text); }
+.dash-topbar .auth-welcome b { color: var(--gold); }
+.dash-topbar .auth-welcome a { color: var(--muted); text-decoration: underline; cursor: pointer; }
+.dash-topbar .auth-guest-actions { display: flex; gap: 8px; align-items: center; }
+.topbar-btn {
+  padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: inherit;
+  font-size: 13px; font-weight: 700;
+  background: rgba(255,255,255,.06); color: var(--text); border: 1px solid rgba(255,255,255,.15);
+  transition: background .12s, transform .05s;
+}
+.topbar-btn:hover { background: rgba(245,197,66,.18); }
+.topbar-btn.gold {
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  color: #2a1c00; border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 8px rgba(245,197,66,.3);
+}
+
+/* ===== BODY: 3 columns ===== */
+.dash-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) 1fr minmax(260px, 320px);
+  min-height: 0;            /* allow children to scroll */
+}
+
+/* LEFT: navigation rail + info chips */
 .dash-nav {
   display: flex; flex-direction: column; gap: 4px;
-  padding: 18px 12px;
+  padding: 16px 12px;
   background: rgba(0,0,0,.32);
   border-right: 1px solid rgba(245,197,66,.15);
 }
 .dash-nav-logo {
   font-size: 22px; font-weight: 800; color: var(--gold);
-  text-align: center; padding: 6px 0 16px; letter-spacing: 1px;
+  text-align: center; padding: 4px 0 14px; letter-spacing: 1px;
 }
 .dash-nav-item {
   display: flex; align-items: center; gap: 10px;
@@ -79,92 +120,126 @@ body::after {
   background: linear-gradient(90deg, rgba(245,197,66,.22), transparent);
   border-color: rgba(245,197,66,.35); color: var(--gold);
 }
-.dash-nav-spacer { flex: 1 1 auto; }
+/* Info chips pinned to the bottom of the rail. */
+.dash-nav-info {
+  margin-top: auto; padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.dash-chip {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px; padding: 8px 10px;
+}
+.dash-chip-ico { font-size: 16px; line-height: 1; }
+.dash-chip b { display: block; font-size: 14px; color: var(--gold); line-height: 1.2; }
+.dash-chip-sub { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.dash-chip-link {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(245,197,66,.25);
+  border-radius: 10px; padding: 8px 10px; cursor: pointer;
+  color: var(--gold); font-family: inherit; font-size: 13px; font-weight: 700;
+  transition: background .12s;
+}
+.dash-chip-link:hover { background: rgba(245,197,66,.18); }
 
 /* CENTER: hero */
 .dash-main {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px;
-  padding: 28px 24px; text-align: center; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 16px; padding: 22px 28px; text-align: center; overflow-y: auto;
+}
+/* Center content fills the full center column — no max-width cap, so the
+   hero panel, action buttons, and room code stretch to match the column
+   width (no empty space on the sides of the hero). */
+
+/* Hero panel: the card graphic + title + stats row, framed in one glass card. */
+.hero-panel {
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(245,197,66,.22);
+  border-radius: 18px;
+  padding: 22px 20px 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 8px 24px rgba(0,0,0,.3);
 }
 .dash-title {
-  font-size: clamp(22px, 3.6vw, 34px); margin: 0;
-  text-shadow: 0 0 22px rgba(245,197,66,.45), 0 0 4px rgba(245,197,66,.3), 0 2px 6px rgba(0,0,0,.7);
+  font-size: clamp(24px, 3.8vw, 36px); margin: 0;
+  text-shadow: 0 0 22px rgba(245,197,66,.45), 0 2px 6px rgba(0,0,0,.7);
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 55%, var(--gold-deep));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.dash-title.greeting { font-size: clamp(26px, 4.4vw, 40px); }
-.dash-title .red { color: var(--red); }
-.dash-subtitle {
-  margin: 10px 0 14px; font-size: clamp(11px, 1.5vw, 13px); color: var(--gold-light);
-  letter-spacing: .5px; background: rgba(0,0,0,.3); border: 1px solid rgba(245,197,66,.2);
-  padding: 6px 16px; border-radius: 999px; white-space: nowrap;
-}
+.dash-title.greeting { font-size: clamp(26px, 4.2vw, 40px); }
+.dash-title .red { color: var(--red); -webkit-text-fill-color: var(--red); }
+.dash-subtitle-text { margin: 6px 0 4px; font-size: 14px; color: var(--muted); }
 
-/* Hero card graphic — three fanned playing cards (A♠ / K♥ / Q♣) behind a warm
-   golden glow, matched to the reference design. Scaled up to be the dominant
-   centerpiece of the center column (was too small → the hero looked empty). */
+/* Hero card graphic — three fanned playing cards (A♠ / K♥ / Q♣) behind a glow. */
 .hero-cards {
-  position: relative; height: 230px; width: 330px; margin: 6px auto 2px;
+  position: relative; height: 168px; width: 248px; margin: 8px auto 6px;
   display: flex; justify-content: center; align-items: center;
 }
-/* Warm amber halo behind the fan — wider + richer to fill the larger graphic. */
 .hero-glow {
   position: absolute; left: 50%; top: 48%;
-  width: 370px; height: 250px;
+  width: 280px; height: 190px;
   transform: translate(-50%, -50%);
   background: radial-gradient(ellipse at center,
-    rgba(245,197,66,.55) 0%, rgba(245,197,66,.24) 38%, rgba(245,197,66,.05) 60%, transparent 74%);
-  filter: blur(12px); z-index: 0; pointer-events: none;
+    rgba(245,197,66,.5) 0%, rgba(245,197,66,.2) 40%, transparent 72%);
+  filter: blur(10px); z-index: 0; pointer-events: none;
 }
 /* The card face: ivory gradient, gold hairline, varnished gloss, deep shadow. */
 .hc {
-  position: absolute; width: 132px; height: 186px; border-radius: 12px;
+  position: absolute; width: 96px; height: 136px; border-radius: 9px;
   background: linear-gradient(160deg, #fffdf4 0%, #fbf4e0 55%, #f1e6c4 100%);
   border: 1px solid #caa84e;
   box-shadow:
-    inset 0 0 0 1px rgba(255,255,255,.6),            /* top-edge gleam */
-    inset 0 0 0 2px rgba(202,168,78,.18),            /* faint inner gold */
-    0 1px 1px rgba(0,0,0,.25),                        /* contact shadow */
-    0 18px 38px rgba(0,0,0,.62),                      /* deep drop shadow */
-    0 8px 16px rgba(0,0,0,.35);
+    inset 0 0 0 1px rgba(255,255,255,.6),
+    inset 0 0 0 2px rgba(202,168,78,.18),
+    0 1px 1px rgba(0,0,0,.25),
+    0 14px 30px rgba(0,0,0,.6),
+    0 6px 12px rgba(0,0,0,.35);
   display: flex; align-items: center; justify-content: center;
   font-family: Georgia, "Times New Roman", serif; font-weight: 800;
   overflow: hidden; z-index: 1;
 }
-/* Diagonal gloss sheen — the "varnished card" look. Sits above the ink. */
 .hc-gloss {
   position: absolute; inset: 0; pointer-events: none; z-index: 4;
   background: linear-gradient(125deg,
     rgba(255,255,255,.5) 0%, rgba(255,255,255,.12) 22%, transparent 42%);
 }
-/* Corner index: rank over suit, stacked tight in the corner. */
 .hc-corner {
   position: absolute; display: flex; flex-direction: column; align-items: center;
   line-height: 1; z-index: 2;
 }
-.hc-corner .hc-rank { font-size: 22px; font-weight: 800; }
-.hc-corner .hc-suit { font-size: 18px; margin-top: 1px; }
-.hc-tl { top: 8px; left: 10px; }
-/* Bottom-right index is rotated 180° so it reads from the opposite end. */
-.hc-br { bottom: 8px; right: 10px; transform: rotate(180deg); }
-/* Large centered pip. */
+.hc-corner .hc-rank { font-size: 16px; font-weight: 800; }
+.hc-corner .hc-suit { font-size: 13px; margin-top: 1px; }
+.hc-tl { top: 6px; left: 7px; }
+.hc-br { bottom: 6px; right: 7px; transform: rotate(180deg); }
 .hc-pip {
-  position: relative; z-index: 1; font-size: 78px; line-height: 1;
+  position: relative; z-index: 1; font-size: 56px; line-height: 1;
   text-shadow: 0 1px 0 rgba(0,0,0,.08);
 }
-/* Fan arrangement: left tilted back, center raised + front-most, right tilted back. */
-.hc-a { left: 24px; top: 24px; transform: rotate(-14deg); color: #161616; }
-.hc-k { left: 50%; top: 6px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
-.hc-q { right: 24px; top: 24px; transform: rotate(14deg); color: #161616; }
-/* Lift the whole stack slightly on hover for a touch of life (decorative only). */
-.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-6px); }
-.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-3px) translateX(-4px); }
-.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-3px) translateX(4px); }
+.hc-a { left: 20px; top: 16px; transform: rotate(-14deg); color: #161616; }
+.hc-k { left: 50%; top: 4px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
+.hc-q { right: 20px; top: 16px; transform: rotate(14deg); color: #161616; }
+.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-4px); }
+.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-2px) translateX(-3px); }
+.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-2px) translateX(3px); }
 .hc, .hero-cards:hover .hc-a, .hero-cards:hover .hc-k, .hero-cards:hover .hc-q {
   transition: transform .18s ease;
 }
 
-/* Stacked full-width action buttons. */
-.dash-cta-stack { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 10px; }
+/* Stats row inside the hero panel: the game's signature numbers. */
+.hero-stats {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+  margin-top: 14px;
+}
+.hero-stat {
+  background: rgba(0,0,0,.35); border: 1px solid rgba(245,197,66,.2);
+  border-radius: 12px; padding: 10px 4px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.hero-stat b { font-size: 20px; color: var(--gold); line-height: 1; }
+.hero-stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+
+/* Action buttons */
+.dash-cta-stack { display: flex; flex-direction: column; gap: 10px; }
 .dash-main input {
   width: 100%; box-sizing: border-box;
   padding: 12px 14px; border-radius: 12px; font-size: 15px;
@@ -195,57 +270,113 @@ body::after {
 .dash-btn:hover { filter: brightness(1.08); }
 .dash-btn:active { transform: translateY(2px); }
 
-/* Room code join block. */
-.dash-roomcode { margin-top: 20px; width: 100%; max-width: 440px; }
-.drc-label { font-size: 13px; color: var(--muted); margin: 0 0 8px; letter-spacing: .3px; }
+/* Room code join block (its own glass card). */
+.dash-roomcode {
+  background: rgba(0,0,0,.28); border: 1px solid rgba(245,197,66,.22);
+  border-radius: 16px; padding: 16px 18px;
+}
+.drc-label { font-size: 13px; color: var(--gold); margin: 0 0 8px; letter-spacing: .3px; font-weight: 700; }
 .dash-main .join-code-row { display: flex; gap: 8px; margin: 0; align-items: stretch; }
 .dash-main .code-input {
-  width: 110px !important; flex: 0 0 auto; margin: 0 !important;
+  width: 120px !important; flex: 0 0 auto; margin: 0 !important;
   text-transform: uppercase; letter-spacing: 3px; font-weight: 700;
 }
 .dash-main #join-code-btn { flex: 1 1 auto; padding: 12px 20px; }
+.drc-help { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
 
 /* RIGHT: stats rail */
 .dash-stats {
   display: flex; flex-direction: column; gap: 12px;
-  padding: 18px 14px;
+  padding: 16px 14px;
   background: rgba(0,0,0,.32);
   border-left: 1px solid rgba(245,197,66,.15);
   overflow-y: auto;
 }
 .dash-stats-card {
   background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
-  border-radius: 12px; padding: 14px;
+  border-radius: 14px; padding: 14px;
 }
-.dash-stats-card h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--gold); margin: 0 0 10px; }
-.dash-stat-line { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; }
-.dash-stat-line b { color: var(--gold); }
+.dash-stats-card h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--gold); margin: 0 0 10px;
+}
+/* Your-stats 2x2 tile grid. */
+.dash-stat-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+}
 .dash-stat-empty { font-size: 12px; color: var(--muted); font-style: italic; }
-.dash-top-row { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 0; }
-.dash-top-rank { width: 18px; font-weight: 800; color: var(--muted); text-align: center; }
+#dash-mystats:has(.dash-stat-tile) {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.dash-stat-tile b { font-size: 20px; color: var(--gold); line-height: 1; }
+.dash-stat-tile span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 
-/* Responsive: collapse to a single stacked column on narrow screens. */
+/* Top players rows: avatar | rank | name | score. */
+.dash-top-row {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.dash-top-row:last-child { border-bottom: none; }
+.dash-top-av {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: rgba(245,197,66,.15); border: 1px solid rgba(245,197,66,.4);
+}
+.dash-top-av.emoji { font-size: 12px; color: var(--gold); font-weight: 700; }
+.dash-top-rank { width: 22px; text-align: center; flex-shrink: 0; }
+.dash-top-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-top-score { color: var(--gold); font-weight: 800; flex-shrink: 0; }
+
+/* Promo card. */
+.dash-stats-card.promo {
+  background: linear-gradient(160deg, rgba(245,197,66,.14), rgba(0,0,0,.3));
+  border-color: rgba(245,197,66,.3);
+}
+.dash-stats-card.promo p { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+.promo-btn {
+  width: 100%; padding: 10px; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  color: #2a1c00; border: none; font-family: inherit; font-size: 13px; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 10px rgba(245,197,66,.3);
+}
+.promo-btn:hover { filter: brightness(1.08); }
+
+/* ===== FOOTER ===== */
+.dash-footer {
+  display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 20px;
+  background: rgba(0,0,0,.4);
+  border-top: 1px solid rgba(245,197,66,.18);
+  font-size: 12px; color: var(--muted);
+}
+.dash-footer-links { display: flex; gap: 14px; }
+.dash-footer a { color: var(--muted); text-decoration: none; }
+.dash-footer a:hover { color: var(--gold); }
+
+/* ===== Responsive ===== */
 @media (max-width: 880px) {
-  .dash { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+  .dash-body { grid-template-columns: 1fr; }
   .dash-nav {
     flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px;
     border-right: none; border-bottom: 1px solid rgba(245,197,66,.15);
   }
   .dash-nav-logo { display: none; }
   .dash-nav-item { padding: 8px 10px; font-size: 12px; }
-  .dash-nav-spacer { display: none; }
-  .dash-nav .auth-welcome, .dash-nav .auth-guest-actions { width: 100%; border-top: 1px solid rgba(255,255,255,.08); padding-top: 8px; }
+  .dash-nav-info { flex-direction: row; width: 100%; margin-top: 6px; padding-top: 8px; }
+  .dash-chip, .dash-chip-link { flex: 1 1 0; }
   .dash-stats {
     flex-direction: row; border-left: none; border-top: 1px solid rgba(245,197,66,.15);
   }
   .dash-stats-card { flex: 1 1 0; }
-  /* Hero card fan: shrink on narrow screens so the whole fan fits the column.
-     The base graphic is now larger (330px wide), so scale down more aggressively. */
-  .hero-cards { transform: scale(.72); transform-origin: center top; margin-bottom: 0; }
+  .hero-cards { transform: scale(.82); transform-origin: center top; }
+  .hero-stats { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 480px) {
-  .hero-cards { transform: scale(.56); }
+  .hero-cards { transform: scale(.7); }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .topbar-name { font-size: 15px; }
+  .dash-footer { gap: 10px; }
 }
 
 .card-panel {

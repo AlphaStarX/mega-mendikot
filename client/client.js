@@ -374,30 +374,32 @@ function renderLeaderboard() {
 function renderDashStats() {
   const mine = $("dash-mystats");
   const top = $("dash-topplayers");
-  // Your stats card.
+  // Your stats card — 2x2 tile grid of the headline numbers.
   if (mine) {
     if (!state.authenticated || !state.stats) {
       mine.innerHTML = `<div class="dash-stat-empty">Log in to track your stats.</div>`;
     } else {
       const s = state.stats;
+      // Win rate = wins / decisive games (draws excluded), matching the profile screen.
+      const decisive = s.wins + s.losses;
+      const wr = decisive ? Math.round((s.wins / decisive) * 100) : 0;
       mine.innerHTML =
-        `<div class="dash-stat-line"><span>Wins</span><b>${s.wins}</b></div>` +
-        `<div class="dash-stat-line"><span>Losses</span><b>${s.losses}</b></div>` +
-        `<div class="dash-stat-line"><span>Draws</span><b>${s.draws}</b></div>` +
-        `<div class="dash-stat-line"><span>Tens</span><b>${s.tensCaptured}</b></div>` +
-        `<div class="dash-stat-line"><span>Matches</span><b>${s.matchesPlayed}</b></div>`;
+        `<div class="dash-stat-tile"><b>${s.matchesPlayed}</b><span>Games Played</span></div>` +
+        `<div class="dash-stat-tile"><b>${s.wins}</b><span>Games Won</span></div>` +
+        `<div class="dash-stat-tile"><b>${wr}%</b><span>Win Rate</span></div>` +
+        `<div class="dash-stat-tile"><b>${s.tensCaptured}</b><span>Tens Captured</span></div>`;
     }
   }
-  // Top players card (top 5).
+  // Top players card (top 5) — rank badge + avatar + name + wins score.
   if (top) {
     if (!Array.isArray(state.leaderboard) || !state.leaderboard.length) {
       top.innerHTML = `<div class="dash-stat-empty">No ranked players yet.</div>`;
     } else {
       top.innerHTML = state.leaderboard.slice(0, 5).map((r) => {
         const flag = r.country ? window.IDENTITY.flagEmoji(r.country) + " " : "";
-        const av = r.avatar ? r.avatar + " " : "";
+        const av = r.avatar ? `<span class="dash-top-av">${r.avatar}</span>` : `<span class="dash-top-av emoji">${(escapeHtml(r.name) || "?").charAt(0).toUpperCase()}</span>`;
         const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
-        return `<div class="dash-top-row"><span class="dash-top-rank">${medal}</span><span>${av}${flag}${escapeHtml(r.name)}</span></div>`;
+        return `<div class="dash-top-row">${av}<span class="dash-top-rank">${medal}</span><span class="dash-top-name">${flag}${escapeHtml(r.name)}</span><span class="dash-top-score">${r.wins}</span></div>`;
       }).join("");
     }
   }
@@ -898,7 +900,7 @@ function renderGreeting() {
     h.textContent = `Welcome back, ${state.userName}!`;
     h.classList.add("greeting");
   } else {
-    h.innerHTML = `♠ Mega Mindikot <span class="red">5v5</span> ♣`;
+    h.textContent = "Welcome Back";
     h.classList.remove("greeting");
   }
 }
@@ -1499,7 +1501,7 @@ $("name-input").addEventListener("input", () => {
   if (!h) return;
   const n = $("name-input").value.trim();
   if (n) { h.textContent = `Welcome, ${n}!`; h.classList.add("greeting"); }
-  else { h.innerHTML = `♠ Mega Mindikot <span class="red">5v5</span> ♣`; h.classList.remove("greeting"); }
+  else { h.textContent = "Welcome Back"; h.classList.remove("greeting"); }
 });
 $("code-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("join-code-btn").click();
@@ -1521,6 +1523,23 @@ if (dashNav) {
     // Highlight the clicked item + dispatch.
     dashNav.querySelectorAll(".dash-nav-item").forEach((el) => el.classList.remove("active"));
     item.classList.add("active");
+    const btn = target && $(target);
+    if (btn) btn.click();
+  });
+}
+// Secondary [data-action] buttons OUTSIDE the nav rail (Community chip, Create
+// Room promo) dispatch the same canonical action buttons, without the
+// nav-highlighting the rail handler performs.
+const dashActionsHost = document.querySelector("#join-screen");
+if (dashActionsHost) {
+  dashActionsHost.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-action]:not(.dash-nav-item)");
+    if (!item) return;
+    const action = item.getAttribute("data-action");
+    const target = {
+      quick: "quick-btn", create: "create-btn", howto: "howto-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn",
+    }[action];
     const btn = target && $(target);
     if (btn) btn.click();
   });
