@@ -30,9 +30,18 @@ model User {
   matchesPlayed Int @default(0)
   tensCaptured  Int @default(0)
 
+  // Phase 4 — player identity. All nullable so the migration is safe for existing
+  // rows; new signups get a playerId generated in handleSignup, existing rows get
+  // one via lazy backfill on next login. country/avatar are null until the user
+  // picks them on the Profile screen.
+  playerId String? @unique   // shareable code (#A4F2K style, without the #), immutable
+  country  String?           // 2-letter ISO code, rendered as a flag emoji client-side
+  avatar   String?           // emoji from the curated palette (shared/identity.js)
+
   // Reserved for later phases (added via additive migrations, not yet queried):
-  //   xp, level, avatarUrl, country, playerId
+  //   xp, level
 
   @@index([email])
   @@index([wins])   // Phase 3 — backs the leaderboard's ORDER BY wins DESC
+  @@index([playerId]) // Phase 4 — backs future "add friend by ID" lookup (Phase 6)
 }

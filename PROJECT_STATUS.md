@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (Phase 3 leaderboard; Phase 2 stats; Task 7 lobby)
+> **Last updated:** 2026-06-23 (home-screen redesign → 3-zone dashboard + reference-matched center; Phase 4 identity)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -10,7 +10,7 @@
 > (own throwaway DB, shared SFU). Eyeball every change here before merging to `live`.
 > **Auto-deploy:** push to `staging` → GitHub Actions runs tests → if green, rebuilds `staging-app`
 > automatically (`.github/workflows/staging-deploy.yml`). Promotion to `live` stays manual.
-> **Tests:** 113 passing (rules + auth + livekit + bot + match + debug + stats + leaderboard); full suite ~1.1s (was a
+> **Tests:** 130 passing (rules + auth + livekit + bot + match + debug + stats + leaderboard + identity); full suite ~1.1s (was a
 > 5-min hang in CI — fixed via GameRoom timer teardown; see §2).
 > **📖 Ops runbook:** `docs/DEPLOYMENT.md` — server details, day-to-day workflows,
 > box-specific caveats, and troubleshooting. **Read it first in a new session.**
@@ -168,6 +168,82 @@ Phase 2's stats columns — no new data model, one read query + one screen.
   visible) and cross-linked from the profile screen ("View Leaderboard").
 - **Tests:** +10 (`test/leaderboard.test.js`): sort, rank, tiebreak, winRate
   (incl. null on all-draws), floor filter, max cap, empty/defensive. **113/113 pass.**
+
+### ✅ Player identity — player IDs, emoji avatars, country flags (Phase 4)
+Three lightweight identity sub-features adding social/personal flair. No image
+storage — avatar is an emoji code, country a 2-letter ISO code rendered as a flag
+emoji client-side, player ID a short generated code. One additive migration.
+
+- **Player IDs** — short shareable codes (`#A4F2K` style, 5 chars from an
+  unambiguous alphabet), generated at signup (unique, immutable). Shown on the
+  profile + copyable. Sets up Phase 6 (add friends by ID). Existing accounts get
+  one via lazy backfill on next login.
+- **Country flags** — a curated ~54-country dropdown (`shared/identity.js`) set on
+  the Profile screen; renders as a flag emoji (regional-indicator algorithm)
+  next to the player's name everywhere (lobby, game seats, leaderboard, profile).
+  Empty = no flag.
+- **Emoji avatars** — a curated ~46-emoji palette picker on the Profile screen.
+  Shows in the avatar circle everywhere; unset falls back to the initials-in-a-
+  circle behavior.
+- **`shared/identity.js`** (source of truth, server+tests) + `client/identity-data.js`
+  (flat-script mirror, since the client isn't ESM): the palette + country list +
+  `flagEmoji()` + validators (`isValidCountry`/`isValidAvatar`).
+- **Signup stays minimal** (name/email/password). Country + avatar are set via a
+  Profile "Identity" → "Edit" flow (country `<select>` + emoji grid + Save). The
+  `updateProfile` message validates input against the curated lists (rejects
+  arbitrary emoji/codes) and replies `profileUpdated`.
+- **Identity flows everywhere**: `authOk` carries `playerId`/`country`/`avatar`;
+  the leaderboard query selects them; seats cache `avatar`/`country` at seat time
+  (off the `ws` set during auth — no per-broadcast DB lookup) and carry them in
+  the lobby/init/matchEnd/leadSelectEnter payloads.
+- **Tests:** +17 (`test/identity.test.js`): flagEmoji (incl. lowercase/null/junk
+  + code-point structure), country/avatar validation, generatePlayerId (length +
+  alphabet + variety), data sanity (codes unique, every code has a flag).
+  **130/130 pass.**
+
+### ✅ Home-screen redesign — 3-zone dashboard + reference-matched center (staging-only)
+The flat "name + two buttons" main menu was rebuilt as a 3-zone dashboard
+(left nav rail / center hero / right stats rail), with the center column matched
+to an explicit reference design (`MainUI.png`). **On `staging` — not yet promoted
+to `live`.** Pure HTML/CSS/JS-home work; zero game-logic or server changes.
+
+- **3-zone CSS-grid dashboard** (`.dash`, `grid-template-columns: 220px 1fr 240px`):
+  - **Left nav rail** (`.dash-nav`): logo + nav items (Quick Match, Private Room,
+    How to Play, My Stats, Leaderboard) that *dispatch* to the canonical hidden
+    buttons (one delegated listener → `btn.click()`), so the visual nav and the
+    real wiring stay decoupled. Hosts the auth area (welcome/logout or login/signup).
+  - **Center hero** (`.dash-main`): the reference-matched centerpiece (below).
+  - **Right stats rail** (`.dash-stats`): live "Your Stats" + "Top Players" cards,
+    populated by `renderDashStats()` from `state.stats` / `state.leaderboard`.
+  - **Responsive** (`@media max-width: 880px`): collapses to a single stacked column
+    — nav becomes a wrapping top bar, stats become a bottom row.
+- **Reference-matched center** (`5959d70`, rebuilt after two earlier rejected
+  attempts — floating suit cards, then a CSS card fan, both removed):
+  - **Dynamic greeting heading** (`#dash-greeting`): `♠ Mega Mindikot 5v5 ♣` by
+    default; flips to **"Welcome back, [Name]!"** when logged in; live-updates to
+    **"Welcome, [Name]!"** as a guest types (`renderGreeting()` + an `input`
+    listener).
+  - **Hero card graphic**: three overlapping face cards (A♠ · K♥ · Q♣) behind a
+    soft golden radial-glow halo (`.hero-cards` / `.hero-glow`). Cream faces,
+    gold inner border, drop shadow; middle card raised & front-most.
+  - **Pill-shaped stats strip**: `192 cards · 2 teams · 24 Tens · race to 13`.
+  - **Stacked full-width buttons with subtext** (`.dash-btn`): gold Quick Match
+    ("Jump into a game instantly") + green Create/How-to/Stats/Leaderboard, each
+    with a one-line description under the label.
+  - **Room Code section**: "Have a Room Code?" label + 4-letter input + full-width
+    gold Join button.
+- **Canonical IDs preserved**: `#quick-btn`, `#create-btn`, `#howto-btn`,
+  `#profile-btn`, `#leaderboard-btn`, `#join-code-btn`, `#code-input`, `#name-input`
+  — all existing wiring (nav delegation, connect paths, keydown handlers) unchanged.
+- **Profile/leaderboard overflow fix** (`04984da`, already on staging): the
+  identity-editor + rich profile pushed past the `overflow:hidden` viewport.
+  Profile/leaderboard panels now `max-height: 90vh` + `overflow-y: auto`.
+- **Commits (staging-only):** `3f190ea` (3-zone dashboard) → `7bb39bf`
+  (immersive hero variant, superseded) → `04984da` (overflow fix) → `c14e284`
+  (removed rejected card fan) → `5959d70` (reference-matched center). The
+  intermediate `7bb39bf`/`3f190ea` variants were iterative; the *deployed* shape
+  is the union of the final center rebuild + the 3-zone shell.
+- **Tests:** 130/130 green (CSS/HTML/home-JS only — no suite touched).
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -406,8 +482,8 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 | Branch | Purpose | Status |
 |---|---|---|
 | `main` | Original baseline (initial commit only) | Untouched since first commit |
-| `live` | **Production — deployed on OVH** | Deployed; slightly behind `staging` (staging-only UI + CI work) |
-| `staging` | Active development + **auto-deploys to staging URL** | 1+ commits ahead of `live` |
+| `live` | **Production — deployed on OVH** | Deployed through Phase 3 (tip `d03a55d`). **Behind `staging`** — Phase 4 identity + the home-screen redesign (4 commits) are not yet promoted. |
+| `staging` | Active development + **auto-deploys to staging URL** | **Ahead of `live`.** Tip `5959d70`: home-screen redesign + Phase 4. Eyeball `staging.mindikot.com` before the next promote. |
 
 **Ship-to-staging flow (automated):** just push — CI does the rest:
 ```bash
@@ -447,25 +523,31 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ## 6. Commit history (recent)
 
-> **Branch state:** `staging` is ahead of `live` by several commits (staging-only work:
-> per-team chip tracker, Lead-chip-always-visible, staging-env infra, auto-deploy CI, test
-> teardown fix, ops docs). The staging-env **infra** commit was cherry-picked to `live` so the
-> box could run staging services; the UI/CI/docs commits are still staging-only pending QA +
-> promotion. Cherry-pick SHA on `live`: `772ea38`.
+> **Branch state:** `staging` is **ahead** of `live`. `staging` tip `5959d70` carries
+> Phase 4 identity (`d2c23ee`) + the home-screen redesign (5 commits) + the profile/leaderboard
+> overflow fix (`04984da`). `live` tip `d03a55d` is deployed through Phase 3. The pending batch
+> needs eyeballing on `staging.mindikot.com` before the next promote. (The branches otherwise
+> diverge only as a merge-commit artifact — live carries the promotion merges.)
 
 ```
-eb123dc fix(test): tear down GameRoom timers so npm test exits cleanly    [staging]
-f4c7dc4 ci: verify auto-deploy loop (secrets now configured)              [staging]
-8995711 ci: auto-deploy staging branch to staging.mindikot.com            [staging]
-66c0ea8 docs: add DEPLOYMENT.md ops runbook, link from PROJECT_STATUS      [staging]
-8b53262 feat(deploy): add staging.mindikot.com preview environment        [staging+live¹]
-7a131e8 fix(ui): always render both team trackers + keep Lead chip visible [staging]
-26f7c89 feat(ui): split captured-10s tracker into two per-team panels     [staging]
-ec5725c fix(ui): hide empty captured-10s tracker at match start           [staging]
-4202fc7 docs: update PROJECT_STATUS — deployed live, all-player voice...  [staging+live]
-d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [staging+live]
+5959d70 feat(ui): rebuild home center to match reference design               [staging]
+c14e284 ui: remove card-fan centerpiece from home screen center               [staging]
+7bb39bf feat(ui): redesign home screen as a full-screen immersive hero         [staging]
+04984da fix(ui): profile/leaderboard panels scroll instead of off-screen       [staging]
+3f190ea feat(ui): redesign home screen as a 3-zone dashboard                   [staging]
+d2c23ee feat(identity): Phase 4 — player IDs, emoji avatars, country flags     [staging]
+da72974 docs: update PROJECT_STATUS — staging env, auto-deploy CI, trackers   [staging+live]
+1682b31 feat(leaderboard): Phase 3 — public leaderboard by total wins         [staging+live]
+6844716 fix(profile): match record bar — correct proportions + empty state     [staging+live]
+af28432 fix(rules): autoPlayPick deadlock — undefined bestN when first suit... [staging+live]
+33b6345 style(ui): felt texture + gold seat name plates + glassmorphic HUD     [staging+live]
+efc44a9 feat(profile): rich dashboard layout for the Profile screen            [staging+live]
+2acca65 fix(ui): center emblem back to pure text                               [staging+live]
+e4b9810 feat(stats): Phase 2 — win/loss stats + Profile screen; RULEBOOK fix   [staging+live]
+9b2f2ab fix(test): guard handleTimeout auto-play + harden fastTimer tick loop  [staging+live]
+b4a6005 fix(ui): enlarge lobby seat map + compact readable chips               [staging+live]
+8380f6a feat(lobby): team selection + Play Again + party voice (Task 7)        [staging+live]
 ```
-¹ `8b53262` was cherry-picked to `live` as `772ea38` (deploy-infra only, no UI changes).
 (Full earlier history in `git log`; initial commit was `68eda4d`.)
 
 ---
@@ -473,25 +555,31 @@ d37ce00 feat: apex redirect, opt-in voice, lobby voice, player README      [stag
 ## 7. Roadmap — what's next
 
 ### 🔜 Immediate — next up
-Task 7 (team selection + Play Again + party voice) has shipped (see §2). The next
+Phases 1–4 + Task 7 are all shipped. Phase 4 + the home-screen redesign are on
+`staging` and need a final QA pass + **promotion to `live`** (see §4). The next
 candidate work items:
 
-- **QA + promote Task 7 to `live`:** it's on `staging` (auto-deploys). Eyeball the
-  seat map, a full Play Again cycle, and party voice on `staging.mindikot.com`
-  before fast-forwarding to `live`.
+- **Promote the pending batch to prod** — Phase 4 identity (`d2c23ee`) + home-screen
+  redesign (`5959d70`) + profile/leaderboard overflow fix (`04984da`). Eyeball
+  `staging.mindikot.com` first, then the standard `staging → live` merge + box rebuild.
 - **Mobile/touch polish** for the lobby seat-map (the oval→grid fallback works, but
-  tap targets + the claim interaction want a real-device pass).
+  tap targets + the claim interaction want a real-device pass) and the new home
+  dashboard (the 3-zone grid collapses to a stacked column, but needs a real-device
+  pass — especially the center hero on narrow phones).
+- **Small standalone TODOs:** commit the 2 box-only deploy edits (staging build-
+  context path, LiveKit UDP range `50000-50100`) to shrink the stash-pull-pop
+  dance on prod pulls; pin the SSH deploy action to a SHA (supply-chain hardening).
 
 ### Account-system phases (DB foundation is in place)
-Phases 1–3 are done; these are additive:
+Phases 1–4 are done; these are additive:
 
 | Phase | Feature | Effort |
 |---|---|---|
 | **2** ✅ | ~~Win/loss stats + profile screen~~ — shipped (aggregates only; per-match history is a later phase) | — |
 | **3** ✅ | ~~Leaderboard (top N by wins)~~ — shipped | — |
-| **4** | Player IDs (shareable), avatars, country flags | Medium |
+| **4** ✅ | ~~Player IDs, emoji avatars, country flags~~ — shipped (no image upload; emoji palette + ISO codes) | — |
 | **5** | XP system + player levels | Medium |
-| **6** | Friends list (add by ID, invite to room) | Medium-large |
+| **6** | Friends list (add by ID, invite to room) — player IDs already in place | Medium-large |
 | **7** | Google/GitHub OAuth | Medium |
 
 ### Small standalone TODOs
@@ -515,6 +603,8 @@ Phases 1–3 are done; these are additive:
 > ✅ **Opt-in / all-player / lobby voice** — shipped (see §2).
 > ✅ **Staging environment + auto-deploy CI** — shipped (see §2).
 > ✅ **Task 7: team selection (10-seat table map) + Play Again + party voice** — shipped (see §2).
+> ✅ **Phase 4: player IDs, emoji avatars, country flags** — shipped on `staging`; pending `live` promote (see §2).
+> ✅ **Home-screen redesign: 3-zone dashboard + reference-matched center** — shipped on `staging`; pending `live` promote (see §2).
 
 ---
 
@@ -525,12 +615,16 @@ Phases 1–3 are done; these are additive:
   (`158.69.49.43`). Game, accounts, voice all functional. Apex `mindikot.com`
   redirects to `play.*`. **Staging preview** live at `https://staging.mindikot.com`
   since 2026-06-23 (own throwaway DB, shared SFU, auto-deploys on push).
+- **`staging` is ahead of `live`:** Phase 4 identity + the home-screen redesign are
+  on staging and at `staging.mindikot.com`, but **not yet on production** (`play.*`).
+  They need a QA pass and a manual promote (§4) before players see them.
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.
-- **Task 7 (team selection + Play Again + party voice)** shipped on `staging`;
-  pending QA + promotion to `live` (see §7).
-- **OAuth, XP, friends, per-match history** — all deferred to roadmap phases.
+- **Per-match history**: Phase 2 records aggregate stats only (wins/losses/tens).
+  A scrollable match-by-match history needs a new `Match` table — a later phase.
+- **OAuth, XP, friends** — all deferred to roadmap phases (Phases 5–7). Phase 4
+  (identity) shipped; the rest are additive and not started.
 - **`sessionId` uses `sessionStorage`** for guests (lost on tab close). Authenticated
   users use `localStorage` tokens so they persist — but guests don't get cross-device
   reconnect.
@@ -544,7 +638,7 @@ Phases 1–3 are done; these are additive:
 
 ```bash
 npm install                              # installs Prisma + pg (the only deps)
-npm test                                 # 50+ tests; match suite is <100ms (setImmediate fastTimers)
+npm test                                 # 130 tests; full suite ~1.1s (match suite uses setImmediate fastTimers)
 npm start                                # guest-only mode (no DB)
 
 # With accounts (needs Docker):

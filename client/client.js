@@ -94,6 +94,10 @@ const state = {
   stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
   // --- leaderboard (Phase 3) ---
   leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
+  // --- player identity (Phase 4) ---
+  playerId: null,      // shareable code (#A4F2K), or null
+  country: null,       // 2-letter ISO code, or null
+  avatar: null,        // emoji, or null
   // lobby
   room: null,
   hostSeat: null,
@@ -214,6 +218,7 @@ function handle(m) {
     case "authError": onAuthError(m); break;
     case "authDisabled": onAuthDisabled(m); break;
     case "loggedOut": onLoggedOut(); break;
+    case "profileUpdated": onProfileUpdated(m); break;
     case "stats": onStats(m); break;
     case "leaderboard": onLeaderboard(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
@@ -242,6 +247,9 @@ function onAuthOk(m) {
   state.userName = m.name;
   state.authenticated = true;
   if (m.stats !== undefined) state.stats = m.stats;
+  if (m.playerId !== undefined) state.playerId = m.playerId;
+  if (m.country !== undefined) state.country = m.country;
+  if (m.avatar !== undefined) state.avatar = m.avatar;
   setToken(m.token);
   clearTimeout(state._authFallback);
   // If we were waiting to join (connect deferred auth), send the join now.
@@ -253,6 +261,18 @@ function onAuthOk(m) {
   // Switch back to the join screen so the user sees they're signed in.
   showScreen("join-screen");
   showMsg(`Welcome, ${state.userName}!`);
+  // Fetch fresh stats + leaderboard to populate the dashboard right rail.
+  refreshDash();
+}
+
+// Request fresh stats + leaderboard for the dashboard right rail (home screen).
+// Safe to call anytime; the handlers ignore the data if the home screen isn't up.
+function refreshDash() {
+  if (state.ws && state.ws.readyState === 1) {
+    send({ t: "getLeaderboard" });   // public; always works
+    if (state.authenticated) send({ t: "getStats" });
+    renderDashStats();               // render whatever we have immediately
+  }
 }
 
 function onAuthError(m) {
@@ -281,8 +301,23 @@ function onLoggedOut() {
   state.userName = null;
   state.authenticated = false;
   state.stats = null;
+  state.playerId = null;
+  state.country = null;
+  state.avatar = null;
   refreshAuthUI();
   showScreen("join-screen");
+}
+
+// Phase 4 — server confirmed a profile edit (country/avatar). Apply the new
+// identity to local state + re-render whatever's visible.
+function onProfileUpdated(m) {
+  if (m.name !== undefined) state.userName = m.name;
+  if (m.playerId !== undefined) state.playerId = m.playerId;
+  if (m.country !== undefined) state.country = m.country;
+  if (m.avatar !== undefined) state.avatar = m.avatar;
+  refreshAuthUI();
+  const profile = $("profile-screen");
+  if (profile && !profile.classList.contains("hidden")) { renderProfile(); wireIdentitySection(); }
 }
 
 // ---------- player stats (Phase 2) ----------
@@ -292,6 +327,9 @@ function onStats(m) {
   // If the profile screen is visible, re-render it with the fresh numbers.
   const screen = $("profile-screen");
   if (screen && !screen.classList.contains("hidden")) renderProfile();
+  // Refresh the dashboard right-rail if the home screen is visible.
+  const dash = $("dash-mystats");
+  if (dash && !$("join-screen").classList.contains("hidden")) renderDashStats();
 }
 
 // ---------- leaderboard (Phase 3) ----------
@@ -301,6 +339,9 @@ function onLeaderboard(m) {
   state.leaderboard = Array.isArray(m.rows) ? m.rows : null;
   const screen = $("leaderboard-screen");
   if (screen && !screen.classList.contains("hidden")) renderLeaderboard();
+  // Refresh the dashboard right-rail if the home screen is visible.
+  const dash = $("dash-topplayers");
+  if (dash && !$("join-screen").classList.contains("hidden")) renderDashStats();
 }
 
 // Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
@@ -322,14 +363,49 @@ function renderLeaderboard() {
     const wr = r.winRate !== null && r.winRate !== undefined ? `<span class="lb-wr">${r.winRate}%</span>` : "";
     return `<div class="lb-row${isMe ? " me" : ""}">` +
       `<span class="lb-rank">${medal || r.rank}</span>` +
-      `<span class="lb-name">${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
+      `<span class="lb-name">${r.avatar ? r.avatar + " " : ""}${r.country ? window.IDENTITY.flagEmoji(r.country) + " " : ""}${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
       `<span class="lb-record"><b>${r.wins}</b>W · ${r.losses}L · ${r.draws}D ${wr}</span>` +
       `<span class="lb-matches">${r.matchesPlayed} games</span>` +
     `</div>`;
   }).join("");
 }
 
-// Send a signup request over an open socket. Opens one if needed.
+// --- Dashboard right-rail: populate from state.stats + state.leaderboard ---
+function renderDashStats() {
+  const mine = $("dash-mystats");
+  const top = $("dash-topplayers");
+  // Your stats card — 2x2 tile grid of the headline numbers.
+  if (mine) {
+    if (!state.authenticated || !state.stats) {
+      mine.innerHTML = `<div class="dash-stat-empty">Log in to track your stats.</div>`;
+    } else {
+      const s = state.stats;
+      // Win rate = wins / decisive games (draws excluded), matching the profile screen.
+      const decisive = s.wins + s.losses;
+      const wr = decisive ? Math.round((s.wins / decisive) * 100) : 0;
+      mine.innerHTML =
+        `<div class="dash-stat-tile"><b>${s.matchesPlayed}</b><span>Games Played</span></div>` +
+        `<div class="dash-stat-tile"><b>${s.wins}</b><span>Games Won</span></div>` +
+        `<div class="dash-stat-tile"><b>${wr}%</b><span>Win Rate</span></div>` +
+        `<div class="dash-stat-tile"><b>${s.tensCaptured}</b><span>Tens Captured</span></div>`;
+    }
+  }
+  // Top players card (top 5) — rank badge + avatar + name + wins score.
+  if (top) {
+    if (!Array.isArray(state.leaderboard) || !state.leaderboard.length) {
+      top.innerHTML = `<div class="dash-stat-empty">No ranked players yet.</div>`;
+    } else {
+      top.innerHTML = state.leaderboard.slice(0, 5).map((r) => {
+        const flag = r.country ? window.IDENTITY.flagEmoji(r.country) + " " : "";
+        const av = r.avatar ? `<span class="dash-top-av">${r.avatar}</span>` : `<span class="dash-top-av emoji">${(escapeHtml(r.name) || "?").charAt(0).toUpperCase()}</span>`;
+        const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
+        return `<div class="dash-top-row">${av}<span class="dash-top-rank">${medal}</span><span class="dash-top-name">${flag}${escapeHtml(r.name)}</span><span class="dash-top-score">${r.wins}</span></div>`;
+      }).join("");
+    }
+  }
+}
+
+
 function doSignup(email, password, name) {
   openAuthSocketIfNeeded();
   send({ t: "signup", email, password, name });
@@ -412,9 +488,10 @@ function renderLobbySeats(m) {
     } else {
       const crown = s.seat === m.hostSeat ? " 👑" : "";
       const youTag = s.seat === state.you ? " (You)" : "";
+      const flag = s.country ? window.IDENTITY.flagEmoji(s.country) + " " : "";
       el.innerHTML =
         `<span class="ls-num">${seatTag}</span>` +
-        `<span class="ls-name">${escapeHtml(s.name)}${crown}${youTag}</span>`;
+        `<span class="ls-name">${flag}${escapeHtml(s.name)}${crown}${youTag}</span>`;
     }
     wrap.appendChild(el);
   });
@@ -816,24 +893,38 @@ function showScreen(id) {
 // ---------- auth UI helpers (Phase 1) ----------
 // Reflects login state on the main menu: shows the logged-in name + logout, or
 // the "Log in / Sign up" buttons for guests.
+function renderGreeting() {
+  const h = $("dash-greeting");
+  if (!h) return;
+  if (state.authenticated && state.userName) {
+    h.textContent = `Welcome back, ${state.userName}!`;
+    h.classList.add("greeting");
+  } else {
+    h.textContent = "Welcome Back";
+    h.classList.remove("greeting");
+  }
+}
 function refreshAuthUI() {
   const welcome = $("auth-welcome");
   const guestActions = $("auth-guest-actions");
+  const nameInput = $("name-input");
   if (state.authenticated && state.userName) {
     if (welcome) {
       welcome.classList.remove("hidden");
-      welcome.innerHTML = `Signed in as <b>${state.userName}</b> · <a href="#" id="logout-link">Log out</a>`;
-      const link = $("logout-link");
-      if (link) link.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
+      welcome.innerHTML = `<span class="auth-signed-in">Signed in as <b>${state.userName}</b></span><button id="logout-btn" class="topbar-btn logout" title="Log out">Log out</button>`;
+      const outBtn = $("logout-btn");
+      if (outBtn) outBtn.addEventListener("click", (e) => { e.preventDefault(); doLogout(); });
     }
     if (guestActions) guestActions.classList.add("hidden");
-    // Always set the name field to the account name (don't leave a stale guest name).
-    const nameInput = $("name-input");
-    if (nameInput) nameInput.value = state.userName;
+    // Logged-in players use their account name — hide the guest name input on the hero.
+    if (nameInput) { nameInput.value = state.userName; nameInput.classList.add("hidden"); }
   } else {
     if (welcome) welcome.classList.add("hidden");
     if (guestActions) guestActions.classList.remove("hidden");
+    // Guests type their own name.
+    if (nameInput) nameInput.classList.remove("hidden");
   }
+  renderGreeting();
   // The Profile/Stats button is only for authenticated users.
   const profileBtn = $("profile-btn");
   if (profileBtn) profileBtn.classList.toggle("hidden", !state.authenticated);
@@ -862,16 +953,22 @@ function renderProfile() {
   const decisive = s.wins + s.losses;          // draws excluded from win-rate denominator
   const winRate = decisive > 0 ? Math.round((s.wins / decisive) * 100) : null;
   const initials = (state.userName || "?").slice(0, 2).toUpperCase();
-  // Header card: avatar (initials in a gold ring) + name + a one-line summary.
+  const avatarGlyph = state.avatar || initials;   // emoji if set, else initials
+  const flag = state.country ? window.IDENTITY.flagEmoji(state.country) : "";
+  // Header card: avatar (emoji or initials) + name + flag + record summary.
   wrap.innerHTML =
     // --- Player header card ---
     `<div class="profile-header">` +
-      `<div class="profile-avatar">${initials}</div>` +
+      `<div class="profile-avatar${state.avatar ? " is-emoji" : ""}">${avatarGlyph}</div>` +
       `<div class="profile-id">` +
-        `<div class="profile-name">${escapeHtml(state.userName || "Player")}</div>` +
+        `<div class="profile-name">${flag ? flag + " " : ""}${escapeHtml(state.userName || "Player")}</div>` +
         `<div class="profile-summary">${recordLine(s, winRate)}</div>` +
+        `<div class="profile-playerid">${state.playerId ? `ID <code>#${state.playerId}</code>` : ""}</div>` +
       `</div>` +
     `</div>` +
+    // --- Identity (avatar + country, editable) ---
+    `<div class="profile-section-label">Identity</div>` +
+    identitySectionHtml() +
     // --- Stat tiles (2 rows of compact tiles) ---
     `<div class="profile-section-label">Lifetime Stats</div>` +
     `<div class="stats-grid">` +
@@ -906,6 +1003,73 @@ function recordLine(s, winRate) {
   if (!s.matchesPlayed) return "No matches yet — play your first game!";
   const wr = winRate !== null ? ` · ${winRate}% win rate` : "";
   return `${s.wins}W · ${s.losses}L · ${s.draws}D${wr}`;
+}
+
+// Phase 4 — the Identity edit section: shows current avatar + country with an
+// "Edit" toggle that reveals a country dropdown + avatar emoji picker + Save.
+function identitySectionHtml() {
+  const ID = window.IDENTITY;
+  const curAvatar = state.avatar || "—";
+  const curFlag = state.country ? ID.flagEmoji(state.country) + " " : "";
+  const curCountryName = state.country
+    ? (ID.COUNTRY_OPTIONS.find((c) => c.code === state.country) || {}).name || state.country
+    : "Not set";
+  // Country <select> options (None + the curated list).
+  const countryOpts = [`<option value="">— None —</option>`]
+    .concat(ID.COUNTRY_OPTIONS.map((c) =>
+      `<option value="${c.code}"${c.code === state.country ? " selected" : ""}>${ID.flagEmoji(c.code)} ${escapeHtml(c.name)}</option>`))
+    .join("");
+  // Avatar grid (clickable emoji tiles).
+  const avatarTiles = ID.AVATAR_OPTIONS.map((emo) =>
+    `<span class="avatar-pick${emo === state.avatar ? " selected" : ""}" data-emoji="${emo}">${emo}</span>`).join("");
+  return `<div class="identity-box">` +
+    `<div class="identity-current">` +
+      `<span class="identity-avatar-big">${curAvatar}</span>` +
+      `<span class="identity-country">${curFlag}${escapeHtml(curCountryName)}</span>` +
+    `</div>` +
+    `<button id="identity-edit-btn" class="link-btn" style="margin-top:8px">Edit avatar &amp; country</button>` +
+    `<div id="identity-edit" class="hidden" style="margin-top:12px">` +
+      `<div class="identity-edit-row"><label>Country</label><select id="identity-country">${countryOpts}</select></div>` +
+      `<div class="identity-edit-row"><label>Avatar</label><div class="avatar-grid">${avatarTiles}</div></div>` +
+      `<div class="identity-edit-actions">` +
+        `<button id="identity-save-btn" class="primary">Save</button>` +
+        `<button id="identity-cancel-btn" class="link-btn">Cancel</button>` +
+      `</div>` +
+      `<div id="identity-msg" class="auth-msg"></div>` +
+    `</div>` +
+  `</div>`;
+}
+
+// Wire the Identity section's Edit toggle + Save (called after renderProfile).
+function wireIdentitySection() {
+  const editBtn = $("identity-edit-btn");
+  if (editBtn) editBtn.addEventListener("click", () => { $("identity-edit").classList.remove("hidden"); editBtn.classList.add("hidden"); });
+  const cancelBtn = $("identity-cancel-btn");
+  if (cancelBtn) cancelBtn.addEventListener("click", () => { $("identity-edit").classList.add("hidden"); $("identity-edit-btn").classList.remove("hidden"); });
+  // Avatar grid: click selects (single-select, toggle off if re-clicked).
+  const grid = $("identity-edit") ? $("identity-edit").querySelector(".avatar-grid") : null;
+  if (grid) grid.addEventListener("click", (e) => {
+    const t = e.target.closest(".avatar-pick");
+    if (!t) return;
+    const wasSel = t.classList.contains("selected");
+    grid.querySelectorAll(".avatar-pick").forEach((el) => el.classList.remove("selected"));
+    if (!wasSel) t.classList.add("selected");
+  });
+  const saveBtn = $("identity-save-btn");
+  if (saveBtn) saveBtn.addEventListener("click", () => {
+    const sel = grid ? grid.querySelector(".avatar-pick.selected") : null;
+    const avatar = sel ? sel.getAttribute("data-emoji") : null;
+    const countryEl = $("identity-country");
+    const country = countryEl ? countryEl.value : "";
+    // Clearing the avatar requires an explicit click; if nothing selected, keep current.
+    send({ t: "updateProfile", country, avatar: avatar !== null ? avatar : (state.avatar || "") });
+  });
+}
+
+// What to render in an avatar circle: emoji if set, else initials.
+function avatarContent(seat) {
+  if (seat && seat.avatar) return seat.avatar;
+  return (seat && seat.name || "?").slice(0, 2).toUpperCase();
 }
 
 // A compact stat tile: icon + big value + label.
@@ -1018,9 +1182,9 @@ function renderSeats() {
       }
     }
     el.innerHTML = `
-      <div class="avatar">${initials}${timerRing}</div>
+      <div class="avatar${s.avatar ? " is-emoji" : ""}">${avatarContent(s)}${timerRing}</div>
       ${leadCardHtml}
-      <div class="name">${s.seat === state.you ? "You" : s.name}</div>
+      <div class="name">${s.country ? window.IDENTITY.flagEmoji(s.country) + " " : ""}${s.seat === state.you ? "You" : escapeHtml(s.name)}</div>
       ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
     table.appendChild(el);
   });
@@ -1330,9 +1494,56 @@ $("join-code-btn").addEventListener("click", () => {
 $("name-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") connect(getName(), { mode: "quick" });
 });
+// Live-update the hero greeting as a guest types their name.
+$("name-input").addEventListener("input", () => {
+  if (state.authenticated) return;
+  const h = $("dash-greeting");
+  if (!h) return;
+  const n = $("name-input").value.trim();
+  if (n) { h.textContent = `Welcome, ${n}!`; h.classList.add("greeting"); }
+  else { h.textContent = "Welcome Back"; h.classList.remove("greeting"); }
+});
 $("code-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") $("join-code-btn").click();
 });
+
+// --- Dashboard nav rail: dispatch to the canonical buttons (Part 3) ---
+// The left-rail items are styled clones; clicking them triggers the real button
+// whose wiring (above) does the actual work. One delegated listener on the nav.
+const dashNav = document.querySelector(".dash-nav");
+if (dashNav) {
+  dashNav.addEventListener("click", (e) => {
+    const item = e.target.closest(".dash-nav-item[data-action]");
+    if (!item) return;
+    const action = item.getAttribute("data-action");
+    const target = {
+      quick: "quick-btn", create: "create-btn", howto: "howto-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn",
+    }[action];
+    // Highlight the clicked item + dispatch.
+    dashNav.querySelectorAll(".dash-nav-item").forEach((el) => el.classList.remove("active"));
+    item.classList.add("active");
+    const btn = target && $(target);
+    if (btn) btn.click();
+  });
+}
+// Secondary [data-action] buttons OUTSIDE the nav rail (Community chip, Create
+// Room promo) dispatch the same canonical action buttons, without the
+// nav-highlighting the rail handler performs.
+const dashActionsHost = document.querySelector("#join-screen");
+if (dashActionsHost) {
+  dashActionsHost.addEventListener("click", (e) => {
+    const item = e.target.closest("[data-action]:not(.dash-nav-item)");
+    if (!item) return;
+    const action = item.getAttribute("data-action");
+    const target = {
+      quick: "quick-btn", create: "create-btn", howto: "howto-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn",
+    }[action];
+    const btn = target && $(target);
+    if (btn) btn.click();
+  });
+}
 $("lobby-start-btn").addEventListener("click", () => send({ t: "startGame" }));
 $("lobby-leave-btn").addEventListener("click", () => {
   disconnectVoice();
@@ -1405,6 +1616,7 @@ if (profileBtn) {
     // Refresh fresh stats from the server, then show the profile screen.
     send({ t: "getStats" });
     renderProfile();
+    wireIdentitySection();
     showScreen("profile-screen");
   });
 }

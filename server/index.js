@@ -20,6 +20,7 @@ import {
 import { getDb, closeDb } from "./db.js";
 import { debugAllowed } from "./debug-gate.js";
 import { computeLeaderboardRows, LEADERBOARD_MAX_ROWS } from "./leaderboard.js";
+import { generatePlayerId, isValidCountry, isValidAvatar } from "../shared/identity.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -97,6 +98,7 @@ function makeWs(socket) {
     socket, readyState: 1, OPEN: 1, CLOSED: 3, _listeners: {},
     sessionId: null, room: null, seat: null,
     userId: null, userName: null, authenticated: false,  // account auth (Phase 1)
+    country: null, avatar: null,                          // Phase 4 identity (for seat display)
   };
   ws.on = (ev, fn) => { (ws._listeners[ev] ||= []).push(fn); };
   ws._emit = (ev, ...a) => (ws._listeners[ev] || []).forEach((fn) => fn(...a));
@@ -328,6 +330,45 @@ function handleMessage(ws, msg) {
         send(ws, { t: "stats", stats: null });
       }
       break;
+    case "updateProfile":
+      // Profile "Edit" flow: update country and/or avatar. Authenticated-only.
+      // Validates against the curated lists (rejects arbitrary input); null/empty
+      // clears the field. Replies with a fresh identity payload so the client
+      // state + any rendered surfaces update.
+      if (ws.authenticated && ws.userId) {
+        const db = getDb();
+        if (!db) { send(ws, { t: "authError", message: "Accounts are not available." }); break; }
+        // Build the update patch: only include provided + valid fields.
+        const data = {};
+        if (msg.country !== undefined) {
+          // empty/null clears; otherwise must be a valid code
+          if (msg.country === "" || msg.country === null) data.country = null;
+          else if (isValidCountry(msg.country)) data.country = msg.country.toUpperCase();
+          else { send(ws, { t: "authError", message: "Invalid country." }); break; }
+        }
+        if (msg.avatar !== undefined) {
+          if (msg.avatar === "" || msg.avatar === null) data.avatar = null;
+          else if (isValidAvatar(msg.avatar)) data.avatar = msg.avatar;
+          else { send(ws, { t: "authError", message: "Invalid avatar." }); break; }
+        }
+        if (!Object.keys(data).length) { send(ws, { t: "authError", message: "Nothing to update." }); break; }
+        db.user.update({ where: { id: ws.userId }, data, select: { id: true, displayName: true, playerId: true, country: true, avatar: true } })
+          .then((u) => {
+            ws.userName = u.displayName;
+            ws.country = u.country || null;   // refresh cached seat identity
+            ws.avatar = u.avatar || null;
+            // Send a dedicated identity update (no token re-issue — the existing
+            // JWT stays valid). The client applies these like an authOk subset.
+            send(ws, {
+              t: "profileUpdated", userId: u.id, name: u.displayName,
+              playerId: u.playerId || null, country: u.country || null, avatar: u.avatar || null,
+            });
+          })
+          .catch((e) => { console.error("updateProfile error:", e); send(ws, { t: "authError", message: "Update failed." }); });
+      } else {
+        send(ws, { t: "authError", message: "Log in to edit your profile." });
+      }
+      break;
     case "getLeaderboard":
       // Public leaderboard (top players by wins). No auth required — anyone,
       // including guests, can view. Reads only displayName + stats (never
@@ -339,7 +380,7 @@ function handleMessage(ws, msg) {
           where: { matchesPlayed: { gt: 0 } },
           orderBy: { wins: "desc" },
           take: LEADERBOARD_MAX_ROWS,
-          select: { id: true, displayName: true, wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true },
+          select: { id: true, displayName: true, wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true, country: true, avatar: true },
         })
           .then((users) => send(ws, { t: "leaderboard", rows: computeLeaderboardRows(users) }))
           .catch((e) => { console.error("getLeaderboard error:", e); send(ws, { t: "leaderboard", rows: null }); });
@@ -373,7 +414,39 @@ function authReplyOk(ws, user) {
   ws.userId = user.id;
   ws.userName = user.displayName;
   ws.authenticated = true;
-  send(ws, { t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user) });
+  ws.country = user.country || null;   // cached for seat display (Phase 4)
+  ws.avatar = user.avatar || null;
+  send(ws, {
+    t: "authOk", token, userId: user.id, name: user.displayName,
+    stats: statsOf(user),
+    playerId: user.playerId || null,   // Phase 4 — shareable code
+    country: user.country || null,     // Phase 4 — 2-letter ISO code
+    avatar: user.avatar || null,       // Phase 4 — emoji
+  });
+}
+
+// Ensure a user has a playerId, generating + persisting one if missing (lazy
+// backfill for accounts created before Phase 4). Retries on a uniqueness clash.
+// Returns the playerId; the caller includes it in the auth reply. Fire-and-
+// forget persistence — a failure here must never block login.
+function ensurePlayerId(user) {
+  if (user.playerId) return user.playerId;
+  const db = getDb();
+  if (!db) return null;
+  const tryGen = (attempts) => {
+    if (attempts <= 0) return null;
+    const candidate = generatePlayerId();
+    db.user.update({ where: { id: user.id }, data: { playerId: candidate } })
+      .then(() => { user.playerId = candidate; })
+      .catch((e) => {
+        if (e && e.code === "P2002") tryGen(attempts - 1); // unique clash — retry
+        else console.error("ensurePlayerId error:", e);
+      });
+    return candidate; // optimistic: return the candidate; the row persists async
+  };
+  const candidate = tryGen(5);
+  if (candidate) user.playerId = candidate;
+  return candidate;
 }
 
 function handleSignup(ws, msg) {
@@ -387,11 +460,24 @@ function handleSignup(ws, msg) {
   db.user.findUnique({ where: { email } })
     .then((existing) => {
       if (existing) { send(ws, { t: "authError", message: "An account with that email already exists." }); return null; }
-      return hashPassword(password).then(({ passwordHash, passwordSalt }) =>
-        db.user.create({ data: { email, passwordHash, passwordSalt, displayName: name } })
-      );
+      return hashPassword(password).then(({ passwordHash, passwordSalt }) => {
+        // Generate a unique playerId (retry on a clash with a tiny probability).
+        const pickPlayerId = (attempts) => {
+          if (attempts <= 0) return undefined; // fall back to lazy backfill on login
+          const candidate = generatePlayerId();
+          return db.user.findUnique({ where: { playerId: candidate } })
+            .then((taken) => (taken ? pickPlayerId(attempts - 1) : candidate));
+        };
+        return pickPlayerId(5).then((playerId) =>
+          db.user.create({ data: { email, passwordHash, passwordSalt, displayName: name, playerId } })
+        );
+      });
     })
-    .then((user) => { if (user) authReplyOk(ws, user); })
+    .then((user) => {
+      if (!user) return;
+      if (!user.playerId) ensurePlayerId(user); // safety net if generation above fell through
+      authReplyOk(ws, user);
+    })
     .catch((e) => {
       send(ws, { t: "authError", message: "Signup failed. Please try again." });
       console.error("signup error:", e);
@@ -411,6 +497,7 @@ function handleLogin(ws, msg) {
     })
     .then((user) => {
       if (!user) { send(ws, { t: "authError", message: "Incorrect password." }); return; }
+      if (!user.playerId) ensurePlayerId(user); // lazy backfill for pre-Phase-4 accounts
       authReplyOk(ws, user);
     })
     .catch((e) => {
@@ -429,10 +516,16 @@ function handleAuthenticate(ws, msg) {
   db.user.findUnique({ where: { id: payload.userId } })
     .then((user) => {
       if (!user) return; // user deleted since token issued
+      if (!user.playerId) ensurePlayerId(user); // lazy backfill on session restore
       ws.userId = user.id;
       ws.userName = user.displayName;
+      ws.country = user.country || null;   // cached for seat display (Phase 4)
+      ws.avatar = user.avatar || null;
       ws.authenticated = true;
-      send(ws, { t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user) });
+      send(ws, {
+        t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user),
+        playerId: user.playerId || null, country: user.country || null, avatar: user.avatar || null,
+      });
     })
     .catch((e) => console.error("authenticate error:", e));
 }

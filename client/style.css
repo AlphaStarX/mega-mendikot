@@ -44,6 +44,363 @@ body::after {
 .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
 .hidden { display: none !important; }
 
+/* ---------- Home / join screen — premium dashboard ----------
+   Layout: top nav bar + 3-column body (nav | hero | stats) + footer.
+   Every zone is a gold-bordered glass panel so the screen reads as full,
+   not empty. */
+#join-screen { display: block; align-items: stretch; justify-content: stretch; }
+.dash {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 100%; height: 100%;
+  box-shadow: 0 0 0 1px rgba(245,197,66,.08);
+}
+
+/* ===== TOP NAV BAR ===== */
+.dash-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px;
+  background: rgba(0,0,0,.4);
+  border-bottom: 1px solid rgba(245,197,66,.18);
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; }
+.topbar-logo {
+  font-size: 26px; color: var(--gold);
+  text-shadow: 0 0 12px rgba(245,197,66,.5); line-height: 1;
+}
+.topbar-name { font-size: 18px; font-weight: 800; letter-spacing: .5px; }
+.topbar-name .red { color: var(--red); }
+.topbar-auth { display: flex; align-items: center; gap: 10px; }
+/* auth-welcome (signed-in) injected by JS; holds "Signed in as" + a Log out button. */
+.dash-topbar .auth-welcome {
+  margin: 0; font-size: 13px; color: var(--text);
+  display: flex; align-items: center; gap: 10px;
+}
+.dash-topbar .auth-welcome b { color: var(--gold); }
+.dash-topbar .auth-welcome a { color: var(--muted); text-decoration: underline; cursor: pointer; }
+.dash-topbar .auth-guest-actions { display: flex; gap: 8px; align-items: center; }
+.topbar-btn {
+  padding: 8px 16px; border-radius: 10px; cursor: pointer; font-family: inherit;
+  font-size: 13px; font-weight: 700;
+  background: rgba(255,255,255,.06); color: var(--text); border: 1px solid rgba(255,255,255,.15);
+  transition: background .12s, transform .05s;
+}
+.topbar-btn:hover { background: rgba(245,197,66,.18); }
+.topbar-btn.gold {
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  color: #2a1c00; border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 8px rgba(245,197,66,.3);
+}
+/* Log out: red/destructive accent to signal it ends the session. */
+.topbar-btn.logout {
+  background: rgba(80,12,12,.45); color: #ffd6d6; border-color: var(--red);
+}
+.topbar-btn.logout:hover { background: var(--red); color: #fff; }
+
+/* ===== BODY: 3 columns ===== */
+.dash-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) 1fr minmax(260px, 320px);
+  min-height: 0;            /* allow children to scroll */
+}
+
+/* LEFT: navigation rail + info chips */
+.dash-nav {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 16px 12px;
+  background: rgba(0,0,0,.32);
+  border-right: 1px solid rgba(245,197,66,.15);
+}
+/* The logo block was removed from the rail; keep a little top breathing
+   room so the first nav item (Home) isn't flush to the top edge. */
+.dash-nav { padding-top: 18px; }
+.dash-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 10px; cursor: pointer;
+  background: transparent; border: 1px solid transparent;
+  color: var(--text); font-family: inherit; font-size: 14px; font-weight: 600;
+  text-align: left; transition: background .12s;
+}
+.dash-nav-item .dni-ico { font-size: 16px; }
+.dash-nav-item:hover { background: rgba(245,197,66,.12); }
+.dash-nav-item.active {
+  background: linear-gradient(90deg, rgba(245,197,66,.22), transparent);
+  border-color: rgba(245,197,66,.35); color: var(--gold);
+}
+/* Info chips pinned to the bottom of the rail. */
+.dash-nav-info {
+  margin-top: auto; padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.dash-chip {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 10px; padding: 8px 10px;
+}
+.dash-chip-ico { font-size: 16px; line-height: 1; }
+.dash-chip b { display: block; font-size: 14px; color: var(--gold); line-height: 1.2; }
+.dash-chip-sub { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.dash-chip-link {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: rgba(0,0,0,.3); border: 1px solid rgba(245,197,66,.25);
+  border-radius: 10px; padding: 8px 10px; cursor: pointer;
+  color: var(--gold); font-family: inherit; font-size: 13px; font-weight: 700;
+  transition: background .12s;
+}
+.dash-chip-link:hover { background: rgba(245,197,66,.18); }
+
+/* CENTER: hero */
+.dash-main {
+  display: flex; flex-direction: column; align-items: stretch;
+  gap: 16px; padding: 22px 28px; text-align: center; overflow-y: auto;
+}
+/* Center content fills the full center column — no max-width cap, so the
+   hero panel, action buttons, and room code stretch to match the column
+   width (no empty space on the sides of the hero). */
+
+/* Hero panel: the card graphic + title + stats row, framed in one glass card. */
+.hero-panel {
+  background: rgba(0,0,0,.28);
+  border: 1px solid rgba(245,197,66,.22);
+  border-radius: 18px;
+  padding: 22px 20px 18px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 8px 24px rgba(0,0,0,.3);
+}
+.dash-title {
+  font-size: clamp(24px, 3.8vw, 36px); margin: 0;
+  text-shadow: 0 0 22px rgba(245,197,66,.45), 0 2px 6px rgba(0,0,0,.7);
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 55%, var(--gold-deep));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.dash-title.greeting { font-size: clamp(26px, 4.2vw, 40px); }
+.dash-title .red { color: var(--red); -webkit-text-fill-color: var(--red); }
+.dash-subtitle-text { margin: 6px 0 4px; font-size: 14px; color: var(--muted); }
+
+/* Hero card graphic — three fanned playing cards (A♠ / K♥ / Q♣) behind a glow. */
+.hero-cards {
+  position: relative; height: 168px; width: 248px; margin: 8px auto 6px;
+  display: flex; justify-content: center; align-items: center;
+}
+.hero-glow {
+  position: absolute; left: 50%; top: 48%;
+  width: 280px; height: 190px;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center,
+    rgba(245,197,66,.5) 0%, rgba(245,197,66,.2) 40%, transparent 72%);
+  filter: blur(10px); z-index: 0; pointer-events: none;
+}
+/* The card face: ivory gradient, gold hairline, varnished gloss, deep shadow. */
+.hc {
+  position: absolute; width: 96px; height: 136px; border-radius: 9px;
+  background: linear-gradient(160deg, #fffdf4 0%, #fbf4e0 55%, #f1e6c4 100%);
+  border: 1px solid #caa84e;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.6),
+    inset 0 0 0 2px rgba(202,168,78,.18),
+    0 1px 1px rgba(0,0,0,.25),
+    0 14px 30px rgba(0,0,0,.6),
+    0 6px 12px rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  font-family: Georgia, "Times New Roman", serif; font-weight: 800;
+  overflow: hidden; z-index: 1;
+}
+.hc-gloss {
+  position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  background: linear-gradient(125deg,
+    rgba(255,255,255,.5) 0%, rgba(255,255,255,.12) 22%, transparent 42%);
+}
+.hc-corner {
+  position: absolute; display: flex; flex-direction: column; align-items: center;
+  line-height: 1; z-index: 2;
+}
+.hc-corner .hc-rank { font-size: 16px; font-weight: 800; }
+.hc-corner .hc-suit { font-size: 13px; margin-top: 1px; }
+.hc-tl { top: 6px; left: 7px; }
+.hc-br { bottom: 6px; right: 7px; transform: rotate(180deg); }
+.hc-pip {
+  position: relative; z-index: 1; font-size: 56px; line-height: 1;
+  text-shadow: 0 1px 0 rgba(0,0,0,.08);
+}
+.hc-a { left: 20px; top: 16px; transform: rotate(-14deg); color: #161616; }
+.hc-k { left: 50%; top: 4px; transform: translateX(-50%) rotate(0deg); color: var(--red); z-index: 3; }
+.hc-q { right: 20px; top: 16px; transform: rotate(14deg); color: #161616; }
+.hero-cards:hover .hc-k { transform: translateX(-50%) rotate(0deg) translateY(-4px); }
+.hero-cards:hover .hc-a { transform: rotate(-14deg) translateY(-2px) translateX(-3px); }
+.hero-cards:hover .hc-q { transform: rotate(14deg) translateY(-2px) translateX(3px); }
+.hc, .hero-cards:hover .hc-a, .hero-cards:hover .hc-k, .hero-cards:hover .hc-q {
+  transition: transform .18s ease;
+}
+
+/* Stats row inside the hero panel: the game's signature numbers. */
+.hero-stats {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px;
+  margin-top: 14px;
+}
+.hero-stat {
+  background: rgba(0,0,0,.35); border: 1px solid rgba(245,197,66,.2);
+  border-radius: 12px; padding: 14px 14px;
+  display: flex; flex-direction: row; align-items: center; gap: 14px;
+}
+.hero-stat .hero-stat-ico { font-size: 44px; line-height: 1; flex-shrink: 0; }
+.hero-stat-text { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.hero-stat b { font-size: 22px; color: var(--gold); line-height: 1; }
+/* Scope the small label style to the label span ONLY, so it can't shrink the icon. */
+.hero-stat .hero-stat-text span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+
+/* Action buttons */
+.dash-cta-stack { display: flex; flex-direction: column; gap: 10px; }
+.dash-main input {
+  width: 100%; box-sizing: border-box;
+  padding: 12px 14px; border-radius: 12px; font-size: 15px;
+  background: rgba(0,0,0,.35); color: var(--text);
+  border: 1px solid #2c5a40; outline: none; text-align: center; margin: 0;
+}
+.dash-main input:focus { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(245,197,66,.25); }
+
+.dash-btn {
+  width: 100%; box-sizing: border-box; padding: 12px 18px; border-radius: 12px; cursor: pointer;
+  font-family: inherit; text-align: center; border: 1px solid transparent;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  transition: transform .08s, filter .12s, background .12s;
+}
+.dash-btn .db-label { font-size: 16px; font-weight: 800; }
+.dash-btn .db-sub { font-size: 12px; font-weight: 500; opacity: .85; }
+.dash-btn.primary {
+  background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
+  color: #2a1c00; border-color: var(--gold-deep);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 14px rgba(245,197,66,.3);
+}
+.dash-btn.primary .db-sub { color: #4a3400; }
+.dash-btn.green {
+  background: linear-gradient(180deg, #1f6e3f 0%, #15512c 100%);
+  color: var(--text); border-color: rgba(245,197,66,.3);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 3px 10px rgba(0,0,0,.3);
+}
+.dash-btn:hover { filter: brightness(1.08); }
+.dash-btn:active { transform: translateY(2px); }
+
+/* Room code join block (its own glass card). */
+.dash-roomcode {
+  background: rgba(0,0,0,.28); border: 1px solid rgba(245,197,66,.22);
+  border-radius: 16px; padding: 16px 18px;
+}
+/* "Room Code" label sits inline in the row (not as a block on top). */
+.drc-label { font-size: 13px; color: var(--gold); margin: 0; letter-spacing: .3px; font-weight: 700; white-space: nowrap; }
+/* Room code row: label · short fixed-width input · small Join button — all on one line. */
+.dash-main .join-code-row { display: flex; gap: 10px; margin: 0; align-items: center; }
+.dash-main .code-input {
+  flex: 0 0 auto; width: 120px !important; margin: 0 !important;
+  text-transform: uppercase; letter-spacing: 3px; font-weight: 700;
+}
+/* Compact gold Join button — does NOT stretch (auto width, content-sized). */
+.join-btn {
+  flex: 0 0 auto; padding: 10px 22px; border-radius: 10px; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 800; border: none;
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  color: #2a1c00;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 8px rgba(245,197,66,.3);
+  transition: transform .05s, filter .12s;
+}
+.join-btn:hover { filter: brightness(1.08); }
+.join-btn:active { transform: translateY(2px); }
+.drc-help { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+
+/* RIGHT: stats rail */
+.dash-stats {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px 14px;
+  background: rgba(0,0,0,.32);
+  border-left: 1px solid rgba(245,197,66,.15);
+  overflow-y: auto;
+}
+.dash-stats-card {
+  background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px; padding: 14px;
+}
+.dash-stats-card h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--gold); margin: 0 0 10px;
+}
+/* Your-stats 2x2 tile grid. */
+.dash-stat-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+}
+.dash-stat-empty { font-size: 12px; color: var(--muted); font-style: italic; }
+#dash-mystats:has(.dash-stat-tile) {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.dash-stat-tile b { font-size: 20px; color: var(--gold); line-height: 1; }
+.dash-stat-tile span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+
+/* Top players rows: avatar | rank | name | score. */
+.dash-top-row {
+  display: flex; align-items: center; gap: 8px; font-size: 13px;
+  padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.dash-top-row:last-child { border-bottom: none; }
+.dash-top-av {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; background: rgba(245,197,66,.15); border: 1px solid rgba(245,197,66,.4);
+}
+.dash-top-av.emoji { font-size: 12px; color: var(--gold); font-weight: 700; }
+.dash-top-rank { width: 22px; text-align: center; flex-shrink: 0; }
+.dash-top-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-top-score { color: var(--gold); font-weight: 800; flex-shrink: 0; }
+
+/* Promo card. */
+.dash-stats-card.promo {
+  background: linear-gradient(160deg, rgba(245,197,66,.14), rgba(0,0,0,.3));
+  border-color: rgba(245,197,66,.3);
+}
+.dash-stats-card.promo p { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+.promo-btn {
+  width: 100%; padding: 10px; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  color: #2a1c00; border: none; font-family: inherit; font-size: 13px; font-weight: 800;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 10px rgba(245,197,66,.3);
+}
+.promo-btn:hover { filter: brightness(1.08); }
+
+/* ===== FOOTER ===== */
+.dash-footer {
+  display: flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap;
+  padding: 12px 20px;
+  background: rgba(0,0,0,.4);
+  border-top: 1px solid rgba(245,197,66,.18);
+  font-size: 12px; color: var(--muted);
+}
+.dash-footer-links { display: flex; gap: 14px; }
+.dash-footer a { color: var(--muted); text-decoration: none; }
+.dash-footer a:hover { color: var(--gold); }
+
+/* ===== Responsive ===== */
+@media (max-width: 880px) {
+  .dash-body { grid-template-columns: 1fr; }
+  .dash-nav {
+    flex-direction: row; flex-wrap: wrap; gap: 6px; padding: 10px;
+    border-right: none; border-bottom: 1px solid rgba(245,197,66,.15);
+  }
+  .dash-nav-logo { display: none; }
+  .dash-nav-item { padding: 8px 10px; font-size: 12px; }
+  .dash-nav-info { flex-direction: row; width: 100%; margin-top: 6px; padding-top: 8px; }
+  .dash-chip, .dash-chip-link { flex: 1 1 0; }
+  .dash-stats {
+    flex-direction: row; border-left: none; border-top: 1px solid rgba(245,197,66,.15);
+  }
+  .dash-stats-card { flex: 1 1 0; }
+  .hero-cards { transform: scale(.82); transform-origin: center top; }
+  .hero-stats { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .hero-cards { transform: scale(.7); }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .topbar-name { font-size: 15px; }
+  .dash-footer { gap: 10px; }
+}
+
 .card-panel {
   position: relative;
   background: linear-gradient(180deg, #18502f 0%, var(--panel) 100%);
@@ -125,7 +482,7 @@ body::after {
 
 /* ---------- Profile / Stats dashboard (Phase 2) ---------- */
 #profile-screen h1 { color: var(--gold); margin-bottom: 6px; }
-.profile-panel { min-width: 380px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+.profile-panel { min-width: 380px; max-width: 560px; width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; padding: 28px 30px; text-align: left; }
 
 /* Empty / guest state */
 .profile-empty { text-align: center; padding: 24px 0; }
@@ -209,8 +566,15 @@ body::after {
   .profile-soon-grid .soon-tile:nth-child(3) { grid-column: auto; }
 }
 
+/* Subtle scrollbar for scrollable panels (profile/leaderboard when tall). */
+.profile-panel::-webkit-scrollbar, .leaderboard-panel::-webkit-scrollbar { width: 8px; }
+.profile-panel::-webkit-scrollbar-thumb, .leaderboard-panel::-webkit-scrollbar-thumb {
+  background: rgba(245,197,66,.3); border-radius: 4px;
+}
+.profile-panel::-webkit-scrollbar-track, .leaderboard-panel::-webkit-scrollbar-track { background: transparent; }
+
 /* ---------- Leaderboard screen (Phase 3) ---------- */
-.leaderboard-panel { min-width: 360px; max-width: 560px; width: min(560px, 94vw); padding: 28px 30px; text-align: left; }
+.leaderboard-panel { min-width: 360px; max-width: 560px; width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; padding: 28px 30px; text-align: left; }
 .leaderboard-panel h1 { text-align: center; }
 .lb-empty { text-align: center; color: var(--muted); font-style: italic; padding: 28px 0; font-size: 14px; }
 /* Ranked rows: a flex row per player. rank | name | record | games */
@@ -232,6 +596,34 @@ body::after {
   .lb-row { flex-wrap: wrap; gap: 6px 10px; padding: 8px 10px; }
   .lb-matches { min-width: 0; }
 }
+
+/* ---------- Identity section (Phase 4) ---------- */
+/* Avatar as an emoji (instead of initials): bigger font, no letter-spacing. */
+.profile-avatar.is-emoji, .seat .avatar.is-emoji { font-size: 1.6em; font-weight: 400; }
+.profile-playerid { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.profile-playerid code { color: var(--gold); background: rgba(245,197,66,.12); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+.identity-box {
+  background: rgba(0,0,0,.22); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px; padding: 14px; margin-bottom: 16px;
+}
+.identity-current { display: flex; align-items: center; gap: 14px; }
+.identity-avatar-big { font-size: 40px; line-height: 1; }
+.identity-country { font-size: 15px; color: var(--text); font-weight: 600; }
+.identity-edit-row { margin-bottom: 12px; }
+.identity-edit-row > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .5px; }
+.identity-edit-row select {
+  width: 100%; padding: 8px 10px; border-radius: 8px;
+  background: #0a2417; color: var(--text); border: 1px solid #2c5a40; font-size: 14px;
+}
+.avatar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; padding: 4px; }
+.avatar-pick {
+  font-size: 24px; text-align: center; padding: 4px 0; border-radius: 8px; cursor: pointer;
+  background: rgba(0,0,0,.25); border: 2px solid transparent; transition: border-color .1s, background .1s;
+}
+.avatar-pick:hover { background: rgba(245,197,66,.15); }
+.avatar-pick.selected { border-color: var(--gold); background: rgba(245,197,66,.2); }
+.identity-edit-actions { display: flex; gap: 10px; align-items: center; }
+.identity-edit-actions .primary { padding: 8px 18px; }
 
 /* In-match control cluster (Leave + help). Pinned to the top-RIGHT corner
    (position: fixed) to match the original placement, but sized to the same
@@ -262,25 +654,25 @@ body::after {
 
 /* Menu buttons */
 .menu-buttons { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
-.menu-buttons button, .card-panel .primary, #join-code-btn {
+.menu-buttons button, .card-panel .primary {
   background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
   color: #2a1c00; border: none; padding: 12px 28px; border-radius: 10px;
   font-size: 16px; font-weight: 700; cursor: pointer;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 4px 0 #9c7917, 0 6px 14px rgba(0,0,0,.35);
   transition: transform .05s;
 }
-.menu-buttons button:not(.primary), #join-code-btn {
+.menu-buttons button:not(.primary) {
   background: linear-gradient(180deg, #46a069, #2a6b42);
   color: #fff;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 4px 0 #1e4d2f, 0 6px 12px rgba(0,0,0,.3);
 }
-.menu-buttons button:active, .card-panel .primary:active, #join-code-btn:active { transform: translateY(2px); }
-.join-code-row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
-.code-input { width: 90px !important; margin: 0 !important; text-transform: uppercase; letter-spacing: 3px; text-align: center; font-weight: 700; }
-#join-code-btn { padding: 12px 20px; }
+.menu-buttons button:active, .card-panel .primary:active { transform: translateY(2px); }
 
 /* Lobby */
-.lobby-panel { min-width: 520px; max-width: 760px; width: min(760px, 94vw); padding: 24px 28px; }
+.lobby-panel {
+  min-width: 520px; max-width: 1040px; width: min(1040px, 94vw);
+  max-height: 94vh; overflow-y: auto; padding: 28px 32px;
+}
 .room-code { color: var(--gold); letter-spacing: 2px; }
 .lobby-hint { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
 
@@ -291,7 +683,7 @@ body::after {
   position: relative;
   width: 100%;
   aspect-ratio: 1.15 / 1;          /* slightly wider than tall — fits 10 around an oval */
-  max-height: 64vh;
+  max-height: 66vh;
   margin: 14px auto;
   /* Match the game table's felt: lamp pool + weave cross-hatch over emerald. */
   background:
@@ -314,19 +706,19 @@ body::after {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  min-width: 64px; max-width: 130px;
-  padding: 6px 8px; border-radius: 12px;
-  background: rgba(0,0,0,.6); font-size: 12px; font-weight: 600;
+  min-width: 72px; max-width: 150px;
+  padding: 8px 10px; border-radius: 12px;
+  background: rgba(0,0,0,.6); font-size: 14px; font-weight: 600;
   border: 2px solid var(--muted);
   text-align: center; line-height: 1.2;
 }
 .lobby-seat.team-a { border-color: var(--teamA); }
 .lobby-seat.team-b { border-color: var(--teamB); }
 .lobby-seat .ls-num {
-  font-size: 10px; color: var(--muted); font-weight: 500; letter-spacing: .5px;
+  font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: .5px;
 }
-.lobby-seat .ls-name { font-size: 12px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lobby-seat .ls-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.lobby-seat .ls-name { font-size: 14px; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lobby-seat .ls-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .lobby-seat.team-a .ls-dot { background: var(--teamA); }
 .lobby-seat.team-b .ls-dot { background: var(--teamB); }
 /* Your own seat: gold highlight ring so you can find yourself. */
@@ -358,7 +750,8 @@ body::after {
 
 #hud {
   display: flex; justify-content: space-between; align-items: center;
-  width: 100%; max-width: 1100px; padding: 8px 16px; gap: 12px;
+  width: 100%; max-width: 1480px; padding: 8px 16px; gap: 12px;
+  margin: 0 auto;                     /* center the HUD across a wide screen */
   position: relative; /* anchors the .game-leave-btn */
 }
 /* Score panels are stacked columns: the Tens row on top, a "Tricks won" line below.
@@ -419,11 +812,12 @@ body::after {
 .trump-info b { color: var(--gold); font-size: 22px; }
 .info-line b { font-size: 20px; }
 
-#table-wrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; }
+#table-wrap { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; width: 100%; }
 #table {
   position: relative;
-  width: min(92vw, 720px);
-  height: min(58vh, 460px);
+  width: min(94vw, 1180px);
+  height: min(60vh, 620px);
+  max-height: 100%;
   /* Layered felt: lamp-light pool (offset up like a hanging light) over the base
      emerald gradient, plus a faint felt-weave cross-hatch so the green reads as
      fabric, not a flat fill. Layers (top→bottom): weave, lamp pool, base felt. */
@@ -462,12 +856,12 @@ body::after {
   position: absolute;
   transform: translate(-50%, -50%);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
-  width: 96px; text-align: center;
+  width: 116px; text-align: center;
 }
 .seat .avatar {
-  width: 46px; height: 46px; border-radius: 50%;
+  width: 56px; height: 56px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 18px; color: #fff;
+  font-weight: 700; font-size: 22px; color: #fff;
   border: 3px solid transparent;
   background: #2a2a2a;
   position: relative; /* anchors the turn-timer ring */
@@ -484,7 +878,7 @@ body::after {
    flashes red in the final 5 seconds, matching the server's turnWarning. */
 .timer-ring {
   position: absolute; top: 50%; left: 50%;
-  width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  width: 66px; height: 66px; margin: -33px 0 0 -33px;
   transform: rotate(-90deg);      /* start the arc at 12 o'clock */
   pointer-events: none;
   z-index: 3;
@@ -499,10 +893,10 @@ body::after {
 .seat .name {
   /* Gold name plate: a small pill with the gold gradient + dark text, matching
      the game's button finish. Team affiliation shows via a colored bottom edge. */
-  font-size: 11px; font-weight: 700; color: #2a1c00;
+  font-size: 13px; font-weight: 700; color: #2a1c00;
   background: linear-gradient(180deg, var(--gold-light) 0%, var(--gold) 48%, var(--gold-deep) 100%);
-  padding: 2px 10px; border-radius: 999px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 92px;
+  padding: 3px 12px; border-radius: 999px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 108px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 2px 4px rgba(0,0,0,.5);
   margin-top: 1px;
   position: relative;
@@ -516,7 +910,7 @@ body::after {
 /* Face-up mini card under each avatar during the pre-game draw.
    Hidden by default (pre-flip); .reveal-N triggers a one-at-a-time flip-in. */
 .lead-card {
-  width: 38px; height: 52px; border-radius: 5px; background: #fff; color: #000;
+  width: 48px; height: 66px; border-radius: 6px; background: #fff; color: #000;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 1px; font-weight: 800; border: 2px solid #bbb; margin: 4px 0;
   box-shadow: 0 3px 8px rgba(0,0,0,.5);
@@ -524,8 +918,8 @@ body::after {
   transform: rotateY(90deg);  /* face-down "back" before flipping */
 }
 .lead-card.red { color: var(--red); }
-.lead-card .lc-rank { font-size: 17px; line-height: 1; }
-.lead-card .lc-suit { font-size: 18px; line-height: 1; }
+.lead-card .lc-rank { font-size: 21px; line-height: 1; }
+.lead-card .lc-suit { font-size: 22px; line-height: 1; }
 /* Sequential one-at-a-time reveal: each .reveal-N card flips in after N*1300ms.
    The slow stagger lets players actually read each card before the next flips.
    A full 10-card round takes ~13s, giving the ceremony real drama. */
@@ -596,11 +990,11 @@ body::after {
 
 .table-card {
   position: absolute;
-  width: 52px; height: 74px; border-radius: 7px; background: #fff; color: #000;
+  width: 66px; height: 94px; border-radius: 8px; background: #fff; color: #000;
   display: flex; flex-direction: column; justify-content: center; align-items: center;
   font-weight: 800; border: 3px solid #bbb;
   box-shadow: 0 6px 14px rgba(0,0,0,.55);
-  left: -26px; top: -37px;
+  left: -33px; top: -47px;
   opacity: 0;
   animation: cardFade .2s ease-out forwards;
 }
@@ -608,8 +1002,8 @@ body::after {
 .table-card.trump { border-color: #b06; box-shadow: 0 0 14px rgba(200,0,90,.6), 0 6px 14px rgba(0,0,0,.5); }
 /* The winning card must always render above overlapping played cards. */
 .table-card.winning { border-color: var(--gold); box-shadow: 0 0 16px var(--gold), 0 6px 14px rgba(0,0,0,.5); z-index: 5; }
-.table-card .tc-rank { font-size: 22px; line-height: 1; }
-.table-card .tc-suit { font-size: 24px; }
+.table-card .tc-rank { font-size: 28px; line-height: 1; }
+.table-card .tc-suit { font-size: 30px; }
 .tc-badge {
   position: absolute; left: 50%; transform: translateX(-50%);
   font-size: 8px; font-weight: 800; letter-spacing: .5px; padding: 1px 4px; border-radius: 3px;
@@ -626,52 +1020,59 @@ body::after {
 .kitty-label { font-size: 10px; color: var(--gold); letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
 .kitty-count { font-size: 10px; color: var(--muted); }
 .kitty-card {
-  width: 40px; height: 56px; position: relative; transform-style: preserve-3d;
+  width: 52px; height: 72px; position: relative; transform-style: preserve-3d;
   transition: transform .5s ease;
 }
 .kitty-card.revealed { transform: rotateY(180deg); }
 .kitty-face {
-  position: absolute; inset: 0; border-radius: 5px; backface-visibility: hidden;
+  position: absolute; inset: 0; border-radius: 6px; backface-visibility: hidden;
   display: flex; align-items: center; justify-content: center; font-weight: 800;
   box-shadow: 0 3px 8px rgba(0,0,0,.5);
 }
 .kitty-back {
   background: repeating-linear-gradient(45deg, #5b2a8a, #5b2a8a 4px, #4a1f73 4px, #4a1f73 8px);
-  border: 2px solid var(--gold); color: var(--gold); font-size: 18px;
+  border: 2px solid var(--gold); color: var(--gold); font-size: 22px;
 }
 .kitty-front {
-  background: #fff; color: #000; transform: rotateY(180deg); font-size: 15px;
+  background: #fff; color: #000; transform: rotateY(180deg); font-size: 19px;
   border: 2px solid #999; flex-direction: column;
 }
 .kitty-front.red { color: var(--red); }
 .kitty-front.is-ten { border-color: var(--gold); box-shadow: 0 0 10px var(--gold), 0 3px 8px rgba(0,0,0,.5); }
 
 /* ---------- Hand ---------- */
-#hand-wrap { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; padding-bottom: 4px; }
+/* flex-shrink:0 + min-height reserves a fixed slot for the hand so the table
+   (#table-wrap, flex:1) keeps a constant size across the lead ceremony (no
+   hand yet) and actual play (hand present) — no table-size jump. */
+#hand-wrap {
+  width: 100%; flex-shrink: 0; min-height: 168px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding-bottom: 4px;
+}
 #hand-label { font-size: 12px; color: var(--muted); transition: color .15s; }
 #hand {
   display: flex; justify-content: center; flex-wrap: nowrap; overflow-x: auto;
-  /* padding-top gives the hover-lift (-24px) headroom so a lifted card isn't
-     clipped by the scroll container's vertical overflow (overflow-x:auto also
-     constrains overflow-y to auto). 26px = lift + a hair of breathing room. */
-  padding: 26px 4px 8px; max-width: 100vw; gap: 0;
+  /* padding-top gives the hover-lift headroom so a lifted card isn't clipped by
+     the scroll container's vertical overflow (overflow-x:auto also constrains
+     overflow-y to auto). ~32px = lift (30px) + a hair of breathing room. */
+  padding: 32px 4px 8px; max-width: 100vw; gap: 0;
 }
 .card {
-  width: 66px; height: 92px; border-radius: 7px;
+  width: 86px; height: 120px; border-radius: 9px;
   background: #fff; color: var(--black);
   display: flex; flex-direction: column; justify-content: space-between;
-  padding: 6px 7px; font-weight: 700; cursor: pointer;
-  border: 2px solid #ccc; flex-shrink: 0; margin-left: -26px;
+  padding: 8px 9px; font-weight: 700; cursor: pointer;
+  border: 2px solid #ccc; flex-shrink: 0; margin-left: -34px;
   box-shadow: 0 3px 6px rgba(0,0,0,.4); transition: transform .12s, margin .12s, box-shadow .12s;
   position: relative;
 }
 .card:first-child { margin-left: 0; }
 /* New suit group -> extra left gap so the hand clusters into 4 piles. */
-.card.suit-break { margin-left: 8px; }
+.card.suit-break { margin-left: 10px; }
 .card.red { color: var(--red); }
 /* Every card is hover-inspectable (lifts up to read), regardless of turn.
    This lets a waiting player plan without being able to play out of turn. */
-.card:hover { transform: translateY(-24px); z-index: 10; }
+.card:hover { transform: translateY(-30px); z-index: 10; }
 /* .disabled = not playable this turn (illegal, or waiting). Stays readable —
    only slightly dimmed (was .4, now .75) so you can still inspect/plan. The
    cursor reflects intent: a legal-but-blocked card still invites inspection. */
@@ -692,8 +1093,8 @@ body::after {
 }
 /* A playable Ten keeps the star + adds the gold playable border on top. */
 .card.is-ten.playable { border-color: var(--gold); box-shadow: 0 0 16px rgba(245,197,66,.7), 0 3px 6px rgba(0,0,0,.4); }
-.card .rank { font-size: 20px; line-height: 1; }
-.card .suit { font-size: 22px; align-self: flex-end; }
+.card .rank { font-size: 26px; line-height: 1; }
+.card .suit { font-size: 28px; align-self: flex-end; }
 
 .msg-bar {
   background: rgba(0,0,0,.6); color: var(--gold); padding: 6px 14px; border-radius: 8px;

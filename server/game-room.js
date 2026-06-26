@@ -39,6 +39,8 @@ function makeSeats() {
     tens: 0,
     ready: false,
     disconnectAt: null,
+    country: null,   // Phase 4 — identity (null for bots/guests)
+    avatar: null,
   }));
 }
 
@@ -122,6 +124,8 @@ export class GameRoom {
     seat.ready = false;
     seat.isAfk = false;
     seat.timeouts = 0;
+    seat.country = (ws && ws.country) || null;   // Phase 4 — cached at seat time
+    seat.avatar = (ws && ws.avatar) || null;
     this.sockets[seatIdx] = ws;
     if (this.hostSeat === null) this.hostSeat = seatIdx;
     this.log.push(`Human joined seat ${seatIdx} (${seat.name})`);
@@ -151,6 +155,8 @@ export class GameRoom {
     target.ready = false;
     target.isAfk = false;
     target.timeouts = 0;
+    target.country = (ws && ws.country) || null;   // Phase 4 — carry identity to the new seat
+    target.avatar = (ws && ws.avatar) || null;
     this.sockets[targetIdx] = ws;
     // If the human was seated elsewhere, revert the old seat to a bot.
     if (oldIdx !== -1 && oldIdx !== targetIdx) {
@@ -276,7 +282,7 @@ export class GameRoom {
   sendLeadSelectEnter(seatIdx) {
     const ws = this.sockets[seatIdx];
     if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ t: "leadSelectEnter", seats: this.seats.map((s) => ({ seat: s.seat, name: s.name, team: s.team, isBot: s.isBot })), you: seatIdx, _ts: Date.now() }));
+    ws.send(JSON.stringify({ t: "leadSelectEnter", seats: this.seats.map((s) => ({ seat: s.seat, name: s.name, team: s.team, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null })), you: seatIdx, _ts: Date.now() }));
   }
 
   // --- turn timer (spec §2.9) ---
@@ -512,7 +518,7 @@ export class GameRoom {
       deadlock,               // true iff decided by the 12-12 tiebreak (win or draw)
       score: this.score,
       tricksWon: { ...this.tricksWon },
-      seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot })),
+      seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null })),
     });
     if (winningTeam === null) {
       this.log.push(`Match ended in a DRAW. Final ${JSON.stringify(this.score)} tricks ${JSON.stringify(this.tricksWon)}.`);
@@ -693,6 +699,7 @@ export class GameRoom {
       seats: this.seats.map((s) => ({
         seat: s.seat, team: s.team, name: s.name, isBot: s.isBot,
         isConnected: s.isConnected, ready: s.ready,
+        country: s.country || null, avatar: s.avatar || null,
       })),
     };
     this.broadcast(lobby);
@@ -747,6 +754,7 @@ export class GameRoom {
       you: seatIdx,
       seats: this.seats.map((s) => ({
         seat: s.seat, team: s.team, name: s.name, isBot: s.isBot, cardsLeft: s.cardsLeft,
+        country: s.country || null, avatar: s.avatar || null,
       })),
       hand: this.seats[seatIdx].hand.map((c) => this.cardView(c)),
       kittySize: KITTY_SIZE,
