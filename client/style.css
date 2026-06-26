@@ -239,13 +239,14 @@ body::after {
 }
 .hero-stat {
   background: rgba(0,0,0,.35); border: 1px solid rgba(245,197,66,.2);
-  border-radius: 12px; padding: 10px 12px;
-  display: flex; flex-direction: row; align-items: center; gap: 10px;
+  border-radius: 12px; padding: 14px 14px;
+  display: flex; flex-direction: row; align-items: center; gap: 14px;
 }
-.hero-stat-ico { font-size: 28px; line-height: 1; flex-shrink: 0; }
-.hero-stat-text { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
-.hero-stat b { font-size: 18px; color: var(--gold); line-height: 1; }
-.hero-stat span { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.hero-stat .hero-stat-ico { font-size: 44px; line-height: 1; flex-shrink: 0; }
+.hero-stat-text { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.hero-stat b { font-size: 22px; color: var(--gold); line-height: 1; }
+/* Scope the small label style to the label span ONLY, so it can't shrink the icon. */
+.hero-stat .hero-stat-text span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 
 /* Action buttons */
 .dash-cta-stack { display: flex; flex-direction: column; gap: 10px; }
@@ -284,11 +285,12 @@ body::after {
   background: rgba(0,0,0,.28); border: 1px solid rgba(245,197,66,.22);
   border-radius: 16px; padding: 16px 18px;
 }
-.drc-label { font-size: 13px; color: var(--gold); margin: 0 0 8px; letter-spacing: .3px; font-weight: 700; }
-/* Room code row: input expands to fill, Join button stays small/auto-width. */
-.dash-main .join-code-row { display: flex; gap: 8px; margin: 0; align-items: stretch; }
+/* "Room Code" label sits inline in the row (not as a block on top). */
+.drc-label { font-size: 13px; color: var(--gold); margin: 0; letter-spacing: .3px; font-weight: 700; white-space: nowrap; }
+/* Room code row: label · short fixed-width input · small Join button — all on one line. */
+.dash-main .join-code-row { display: flex; gap: 10px; margin: 0; align-items: center; }
 .dash-main .code-input {
-  flex: 1 1 auto; width: auto !important; margin: 0 !important;
+  flex: 0 0 auto; width: 120px !important; margin: 0 !important;
   text-transform: uppercase; letter-spacing: 3px; font-weight: 700;
 }
 /* Compact gold Join button — does NOT stretch (auto width, content-sized). */
