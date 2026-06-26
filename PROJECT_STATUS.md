@@ -1,6 +1,6 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-23 (home-screen redesign → 3-zone dashboard + reference-matched center; Phase 4 identity)
+> **Last updated:** 2026-06-26 (home redesign + Phase 4 + game/lobby 1080p scaling promoted to `live`)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
@@ -201,49 +201,65 @@ emoji client-side, player ID a short generated code. One additive migration.
   alphabet + variety), data sanity (codes unique, every code has a flag).
   **130/130 pass.**
 
-### ✅ Home-screen redesign — 3-zone dashboard + reference-matched center (staging-only)
-The flat "name + two buttons" main menu was rebuilt as a 3-zone dashboard
-(left nav rail / center hero / right stats rail), with the center column matched
-to an explicit reference design (`MainUI.png`). **On `staging` — not yet promoted
-to `live`.** Pure HTML/CSS/JS-home work; zero game-logic or server changes.
+### ✅ Home-screen redesign — premium dashboard (LIVE)
+The flat "name + two buttons" main menu was rebuilt as a premium,
+casino-style dashboard that fills the screen, matched to an explicit
+reference design. **Promoted to `live` 2026-06-26.** Pure HTML/CSS/JS-home
+work; zero game-logic or server changes.
 
-- **3-zone CSS-grid dashboard** (`.dash`, `grid-template-columns: 220px 1fr 240px`):
-  - **Left nav rail** (`.dash-nav`): logo + nav items (Quick Match, Private Room,
+- **Full-width dashboard** (`.dash`, fills 100% width, no max-width cap) with a
+  **top nav bar + 3-column body (nav | hero | stats) + footer**:
+  - **Top nav bar** (`.dash-topbar`): brand on the left (♠ Mega Mindikot 5v5);
+    auth on the right — "Signed in as **name**" + a red **Log out** button, or
+    Log in / Sign up buttons for guests.
+  - **Left nav rail** (`.dash-nav`): nav items (Home, Quick Match, Private Room,
     How to Play, My Stats, Leaderboard) that *dispatch* to the canonical hidden
     buttons (one delegated listener → `btn.click()`), so the visual nav and the
-    real wiring stay decoupled. Hosts the auth area (welcome/logout or login/signup).
-  - **Center hero** (`.dash-main`): the reference-matched centerpiece (below).
-  - **Right stats rail** (`.dash-stats`): live "Your Stats" + "Top Players" cards,
-    populated by `renderDashStats()` from `state.stats` / `state.leaderboard`.
-  - **Responsive** (`@media max-width: 880px`): collapses to a single stacked column
-    — nav becomes a wrapping top bar, stats become a bottom row.
-- **Reference-matched center** (`5959d70`, rebuilt after two earlier rejected
-  attempts — floating suit cards, then a CSS card fan, both removed):
-  - **Dynamic greeting heading** (`#dash-greeting`): `♠ Mega Mindikot 5v5 ♣` by
-    default; flips to **"Welcome back, [Name]!"** when logged in; live-updates to
-    **"Welcome, [Name]!"** as a guest types (`renderGreeting()` + an `input`
-    listener).
-  - **Hero card graphic**: three overlapping face cards (A♠ · K♥ · Q♣) behind a
-    soft golden radial-glow halo (`.hero-cards` / `.hero-glow`). Cream faces,
-    gold inner border, drop shadow; middle card raised & front-most.
-  - **Pill-shaped stats strip**: `192 cards · 2 teams · 24 Tens · race to 13`.
-  - **Stacked full-width buttons with subtext** (`.dash-btn`): gold Quick Match
-    ("Jump into a game instantly") + green Create/How-to/Stats/Leaderboard, each
-    with a one-line description under the label.
-  - **Room Code section**: "Have a Room Code?" label + 4-letter input + full-width
-    gold Join button.
+    real wiring stay decoupled. Bottom info chips: Online Players, Active Rooms,
+    Community.
+  - **Center hero** (`.dash-main`): a **framed glass hero panel** (`#hero-panel`)
+    with a "Welcome Back" greeting (→ "Welcome back, **Name**!" when logged in),
+    subtitle, the 3-card fan (A♠ · K♥ · Q♣), and a **5-stat row** with large
+    icons (🃏 192 Cards · 👥 2 Teams · 🔟 24 Tens · 🏁 Race to 13 · ⚔️ 5v5 Mode).
+    Below it: centered action buttons (`.dash-cta-stack`) and a room-code card.
+  - **Right stats rail** (`.dash-stats`): "Your Stats" (2×2 tile grid — Games
+    Played / Won / Win Rate / Tens) + "Top Players" (avatar/rank/name/score) +
+    a "Create Room" promo card.
+  - **Footer**: © 2026 Mega Mindikot 5v5 · Privacy · Terms · Contact.
+- **Hero card fan**: three fanned face cards (A♠ · K♥ · Q♣) — proper playing-card
+  markup (corner index + large centered pip), ivory gradient face, gold hairline,
+  varnished gloss sheen, deep shadow, warm amber glow. Middle card front-most.
+- **Inline room-code row**: `Room Code  [ROOM]  [Join]` — label + short input +
+  a small compact Join button on one line (was a full-width stretched button).
 - **Canonical IDs preserved**: `#quick-btn`, `#create-btn`, `#howto-btn`,
-  `#profile-btn`, `#leaderboard-btn`, `#join-code-btn`, `#code-input`, `#name-input`
-  — all existing wiring (nav delegation, connect paths, keydown handlers) unchanged.
-- **Profile/leaderboard overflow fix** (`04984da`, already on staging): the
-  identity-editor + rich profile pushed past the `overflow:hidden` viewport.
-  Profile/leaderboard panels now `max-height: 90vh` + `overflow-y: auto`.
-- **Commits (staging-only):** `3f190ea` (3-zone dashboard) → `7bb39bf`
-  (immersive hero variant, superseded) → `04984da` (overflow fix) → `c14e284`
-  (removed rejected card fan) → `5959d70` (reference-matched center). The
-  intermediate `7bb39bf`/`3f190ea` variants were iterative; the *deployed* shape
-  is the union of the final center rebuild + the 3-zone shell.
+  `#profile-btn`, `#leaderboard-btn`, `#join-code-btn`, `#code-input`, `#name-input`,
+  `#dash-greeting`, `#dash-mystats`, `#dash-topplayers`, `login-btn`, `signup-btn` —
+  all existing wiring unchanged. A secondary `[data-action]` listener dispatches
+  the Community chip + Create Room promo to the canonical buttons.
+- **`renderDashStats()`** now renders a 2×2 stat-tile grid + top-player scores
+  (avatar/rank/name/wins). **`renderGreeting()`** defaults to "Welcome Back".
+- **Responsive** (`@media max-width: 880px`): the 3-column body collapses to a
+  single stacked column; stat row reflows; footer wraps.
 - **Tests:** 130/130 green (CSS/HTML/home-JS only — no suite touched).
+
+### ✅ Game + lobby — 1080p scaling (LIVE)
+The gameplay table and lobby screens were scaled to fill a 1920×1080 screen
+the way the home screen now does. **Promoted to `live` 2026-06-26.** CSS-only —
+safe because game seats position by **percentage** of the table (they scale
+automatically; no JS/server changes).
+
+- **Game HUD**: `max-width 1100px → 1480px` (spreads score panels across screen).
+- **Game table**: `720×460 → 1180×620`, bounded so HUD + table + hand all fit.
+- **`#table-wrap` `min-height:0` + `#hand-wrap` `min-height:168px`/`flex-shrink:0`**:
+  the classic flexbox fixes — the table no longer crushes the hand off-screen,
+  and stays a constant size across the lead ceremony (no hand) and play (hand),
+  so there's **no table-size jump** between states.
+- **Cards scaled proportionally**: hand `66×92 → 86×120`, played `52×74 → 66×94`,
+  kitty `40×56 → 52×72`, lead-card `38×52 → 48×66`. Seat avatars `46→56px`,
+  name plates `11→13px`, turn-timer ring `56→66px`.
+- **Lobby**: panel `760 → 1040px` + `max-height:94vh`/`overflow-y:auto` (no more
+  cut-off top/bottom); seat oval `64→66vh`; seats `12→14px`.
+- **Mobile breakpoints untouched** (`@media max-width: 600px` / `480px`).
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -482,8 +498,8 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 | Branch | Purpose | Status |
 |---|---|---|
 | `main` | Original baseline (initial commit only) | Untouched since first commit |
-| `live` | **Production — deployed on OVH** | Deployed through Phase 3 (tip `d03a55d`). **Behind `staging`** — Phase 4 identity + the home-screen redesign (4 commits) are not yet promoted. |
-| `staging` | Active development + **auto-deploys to staging URL** | **Ahead of `live`.** Tip `5959d70`: home-screen redesign + Phase 4. Eyeball `staging.mindikot.com` before the next promote. |
+| `live` | **Production — deployed on OVH** | **Deployed through the home redesign + Phase 4 + 1080p scaling** (tip `4c9cf34`, promoted 2026-06-26). In sync with `staging` content. |
+| `staging` | Active development + **auto-deploys to staging URL** | Tip `968f58f`. In sync with `live` after the 2026-06-26 promote. |
 
 **Ship-to-staging flow (automated):** just push — CI does the rest:
 ```bash
@@ -523,30 +539,28 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ## 6. Commit history (recent)
 
-> **Branch state:** `staging` is **ahead** of `live`. `staging` tip `5959d70` carries
-> Phase 4 identity (`d2c23ee`) + the home-screen redesign (5 commits) + the profile/leaderboard
-> overflow fix (`04984da`). `live` tip `d03a55d` is deployed through Phase 3. The pending batch
-> needs eyeballing on `staging.mindikot.com` before the next promote. (The branches otherwise
-> diverge only as a merge-commit artifact — live carries the promotion merges.)
+> **Branch state:** `staging` and `live` are **in sync** after the 2026-06-26 promote
+> (home redesign + Phase 4 + 1080p scaling). `staging` tip `968f58f`; `live` tip `4c9cf34`
+> (a `--no-ff` promotion commit; `live` otherwise carries promotion merges as artifacts).
 
 ```
-5959d70 feat(ui): rebuild home center to match reference design               [staging]
-c14e284 ui: remove card-fan centerpiece from home screen center               [staging]
-7bb39bf feat(ui): redesign home screen as a full-screen immersive hero         [staging]
-04984da fix(ui): profile/leaderboard panels scroll instead of off-screen       [staging]
-3f190ea feat(ui): redesign home screen as a 3-zone dashboard                   [staging]
-d2c23ee feat(identity): Phase 4 — player IDs, emoji avatars, country flags     [staging]
-da72974 docs: update PROJECT_STATUS — staging env, auto-deploy CI, trackers   [staging+live]
-1682b31 feat(leaderboard): Phase 3 — public leaderboard by total wins         [staging+live]
-6844716 fix(profile): match record bar — correct proportions + empty state     [staging+live]
-af28432 fix(rules): autoPlayPick deadlock — undefined bestN when first suit... [staging+live]
-33b6345 style(ui): felt texture + gold seat name plates + glassmorphic HUD     [staging+live]
-efc44a9 feat(profile): rich dashboard layout for the Profile screen            [staging+live]
-2acca65 fix(ui): center emblem back to pure text                               [staging+live]
-e4b9810 feat(stats): Phase 2 — win/loss stats + Profile screen; RULEBOOK fix   [staging+live]
-9b2f2ab fix(test): guard handleTimeout auto-play + harden fastTimer tick loop  [staging+live]
-b4a6005 fix(ui): enlarge lobby seat map + compact readable chips               [staging+live]
-8380f6a feat(lobby): team selection + Play Again + party voice (Task 7)        [staging+live]
+968f58f feat(ui): scale game + lobby screens to fill 1080p                   [staging+live]
+9beaa54 fix(ui): stat icon specificity + inline room code row                [staging+live]
+e927f8b fix(ui): left-align + enlarge stat icons; compact the Join button    [staging+live]
+4d5fb37 fix(ui): remove MM logo, add stat icons, center button text, logout  [staging+live]
+84b1463 feat(ui): rebuild home as premium dashboard — topbar, body, footer   [staging+live]
+8d2e4ac fix(ui): fill empty center column — cap dashboard width, widen...    [staging+live]
+b534154 fix(ui): enlarge hero card fan to fill the center column             [staging+live]
+3aa6710 feat(ui): rebuild home hero card stack as premium playing cards      [staging+live]
+5959d70 feat(ui): rebuild home center to match reference design              [staging+live]
+c14e284 ui: remove card-fan centerpiece from home screen center              [staging+live]
+7bb39bf feat(ui): redesign home screen as a full-screen immersive hero        [staging+live]
+04984da fix(ui): profile/leaderboard panels scroll instead of off-screen      [staging+live]
+3f190ea feat(ui): redesign home screen as a 3-zone dashboard                  [staging+live]
+d2c23ee feat(identity): Phase 4 — player IDs, emoji avatars, country flags    [staging+live]
+da72974 docs: update PROJECT_STATUS — staging env, auto-deploy CI, trackers  [staging+live]
+1682b31 feat(leaderboard): Phase 3 — public leaderboard by total wins        [staging+live]
+8380f6a feat(lobby): team selection + Play Again + party voice (Task 7)      [staging+live]
 ```
 (Full earlier history in `git log`; initial commit was `68eda4d`.)
 
@@ -555,17 +569,19 @@ b4a6005 fix(ui): enlarge lobby seat map + compact readable chips               [
 ## 7. Roadmap — what's next
 
 ### 🔜 Immediate — next up
-Phases 1–4 + Task 7 are all shipped. Phase 4 + the home-screen redesign are on
-`staging` and need a final QA pass + **promotion to `live`** (see §4). The next
-candidate work items:
+Phases 1–4, Task 7, the home redesign, and the game/lobby 1080p scaling are all
+shipped **and promoted to `live`** (2026-06-26). `staging` and `live` are in sync.
+The next candidate work items:
 
-- **Promote the pending batch to prod** — Phase 4 identity (`d2c23ee`) + home-screen
-  redesign (`5959d70`) + profile/leaderboard overflow fix (`04984da`). Eyeball
-  `staging.mindikot.com` first, then the standard `staging → live` merge + box rebuild.
+- **Real-device QA pass** on the freshly-promoted production build — sign up, play a
+  full Quick Match against bots, try Create Room + the lobby seat map. The 1080p
+  scaling was eyeballed locally but not yet stress-tested in real multi-player play.
 - **Mobile/touch polish** for the lobby seat-map (the oval→grid fallback works, but
   tap targets + the claim interaction want a real-device pass) and the new home
-  dashboard (the 3-zone grid collapses to a stacked column, but needs a real-device
+  dashboard (the 3-column body collapses to a stacked column, but needs a real-device
   pass — especially the center hero on narrow phones).
+- **Phase 5: XP system + player levels** — the next account-system phase (Medium).
+  The DB foundation (User table + stats columns) is already in place.
 - **Small standalone TODOs:** commit the 2 box-only deploy edits (staging build-
   context path, LiveKit UDP range `50000-50100`) to shrink the stash-pull-pop
   dance on prod pulls; pin the SSH deploy action to a SHA (supply-chain hardening).
@@ -603,8 +619,9 @@ Phases 1–4 are done; these are additive:
 > ✅ **Opt-in / all-player / lobby voice** — shipped (see §2).
 > ✅ **Staging environment + auto-deploy CI** — shipped (see §2).
 > ✅ **Task 7: team selection (10-seat table map) + Play Again + party voice** — shipped (see §2).
-> ✅ **Phase 4: player IDs, emoji avatars, country flags** — shipped on `staging`; pending `live` promote (see §2).
-> ✅ **Home-screen redesign: 3-zone dashboard + reference-matched center** — shipped on `staging`; pending `live` promote (see §2).
+> ✅ **Phase 4: player IDs, emoji avatars, country flags** — shipped, live (see §2).
+> ✅ **Home-screen redesign: premium dashboard (topbar + 3-col body + footer)** — shipped, live (see §2).
+> ✅ **Game + lobby 1080p scaling** — shipped, live (see §2).
 
 ---
 
@@ -615,9 +632,9 @@ Phases 1–4 are done; these are additive:
   (`158.69.49.43`). Game, accounts, voice all functional. Apex `mindikot.com`
   redirects to `play.*`. **Staging preview** live at `https://staging.mindikot.com`
   since 2026-06-23 (own throwaway DB, shared SFU, auto-deploys on push).
-- **`staging` is ahead of `live`:** Phase 4 identity + the home-screen redesign are
-  on staging and at `staging.mindikot.com`, but **not yet on production** (`play.*`).
-  They need a QA pass and a manual promote (§4) before players see them.
+- **`staging` and `live` are in sync** as of the 2026-06-26 promote — the home
+  redesign, Phase 4 identity, and game/lobby 1080p scaling are now live in
+  production (`play.*`).
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.
