@@ -1243,10 +1243,14 @@ function renderPlayedCards() {
   if (!host) return;
   host.innerHTML = "";
   const winningSeat = state.winnerSeat !== null ? state.winnerSeat : computeWinningSeat();
+  // Scale the card spread to the actual table size (was a hardcoded 115px, which
+  // clustered cards at dead-center on the larger 1080p table). Use the table's
+  // real width so cards fan out proportionally on any screen.
+  const tableEl = $("table");
+  const radius = tableEl ? Math.max(115, Math.round(tableEl.clientWidth * 0.13)) : 115;
   state.playedCards.forEach((p) => {
     // Each card sits between its own seat and the table center, rotated for your view.
     const angle = cardAngle(p.seat);
-    const radius = 115;
     const rad = (angle - 90) * Math.PI / 180;
     const dx = Math.cos(rad) * radius;
     const dy = Math.sin(rad) * radius;
