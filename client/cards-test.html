@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cards visual test — real game screen</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  /* Hide the real app; show only the game screen for this harness. */
+  #app { display: none; }
+  #game-screen.test-visible { display: flex !important; }
+  body { overflow: hidden; }
+</style>
+</head>
+<body>
+  <!-- EXACT replica of the real #game-screen from index.html (HUD + table + hand),
+       so the surrounding layout is faithfully reproduced. -->
+  <section id="game-screen" class="screen test-visible">
+    <header id="hud">
+      <div class="score team-a">
+        <div class="score-main"><span class="dot a"></span> Team A <b id="score-a">0</b><span class="of">/13</span></div>
+        <div class="tricks-line">Tricks won: <b id="tricks-a">0</b></div>
+        <div id="tens-tracker-a" class="tens-tracker"></div>
+      </div>
+      <div class="center-info">
+        <div id="trump-info" class="trump-info">Trump: <b id="trump-display">♠</b></div>
+        <div id="lead-info" class="info-line">Lead: <b id="lead-display">♠</b></div>
+        <div id="trick-info">Trick: <b id="trick-num">1</b>/18</div>
+      </div>
+      <div class="score team-b">
+        <div class="score-main">Team B <b id="score-b">0</b><span class="of">/13</span> <span class="dot b"></span></div>
+        <div class="tricks-line">Tricks won: <b id="tricks-b">0</b></div>
+        <div id="tens-tracker-b" class="tens-tracker"></div>
+      </div>
+    </header>
+
+    <div class="hud-controls">
+      <button id="game-help-btn" class="hud-btn help" title="How to Play / Rules">?</button>
+      <button id="voice-toggle" class="hud-btn voice" aria-pressed="false" title="Mute / unmute your mic">🎙️</button>
+      <button id="game-leave-btn" class="hud-btn leave" title="Leave the match">Leave</button>
+    </div>
+
+    <div id="table-wrap">
+      <div id="table">
+        <div id="center">
+          <div id="played-cards"></div>
+          <div id="kitty-display">
+            <div class="kitty-label">Kitty</div>
+            <div id="kitty-card" class="kitty-card">
+              <div class="kitty-face kitty-back">?</div>
+              <div class="kitty-face kitty-front"></div>
+            </div>
+            <div id="kitty-count" class="kitty-count">12 left</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer id="hand-wrap">
+      <div id="hand-label">Your hand (click a card to play)</div>
+      <div id="hand"></div>
+    </footer>
+  </section>
+
+  <script>
+    // ---- Seed a fake hand so #hand-wrap has real height (like during play) ----
+    const hand = document.getElementById("hand");
+    const SUIT={0:"♠",1:"♥",2:"♣",3:"♦"};
+    for (let i = 0; i < 18; i++) {
+      const c = document.createElement("div");
+      c.className = "card" + (i % 2 ? " red" : "");
+      c.innerHTML = `<span class="rank">${[7,8,9,10,"J","Q","K","A"][i%8]}</span><span class="suit">${SUIT[i%4]}</span>`;
+      hand.appendChild(c);
+    }
+
+    // ---- Seed captured-tens trackers so the HUD has realistic height ----
+    function seedTracker(id, n) {
+      const el = document.getElementById(id);
+      const html = [];
+      const suits = ["♠","♥","♣","♦"];
+      suits.forEach((s, si) => {
+        let chips = "";
+        for (let j = 0; j < 6; j++) chips += `<div class="tens-chip ${si*6+j < n ? "captured" : "empty"}"></div>`;
+        html.push(`<div class="tens-row"><span class="tens-suit-label">${s}</span><span class="tens-chips">${chips}</span></div>`);
+      });
+      el.innerHTML = html.join("");
+    }
+    seedTracker("tens-tracker-a", 3);
+    seedTracker("tens-tracker-b", 2);
+
+    // ---- Render 10 played cards exactly like client.js renderPlayedCards() ----
+    function cardAngle(seatIndex){ const slot=((seatIndex)+5)%10; return slot*36; }
+    const SUIT_COLOR={SPADES:"black",HEARTS:"red",CLUBS:"black",DIAMONDS:"red"};
+    const SUIT_GLYPH={SPADES:"♠",HEARTS:"♥",CLUBS:"♣",DIAMONDS:"♦"};
+    const RANK_NAME={7:"7",8:"8",9:"9",10:"10",11:"J",12:"Q",13:"K",14:"A"};
+    const host = document.getElementById("played-cards");
+    for (let seat = 0; seat < 10; seat++) {
+      const angle = cardAngle(seat);
+      const radius = 115;
+      const rad = (angle - 90) * Math.PI / 180;
+      const dx = Math.cos(rad) * radius, dy = Math.sin(rad) * radius;
+      const suit = ["SPADES","HEARTS","CLUBS","DIAMONDS"][seat % 4];
+      const rank = [14,13,12,11,10,9,8,7,14,13][seat];
+      const el = document.createElement("div");
+      el.className = "table-card" + (SUIT_COLOR[suit] === "red" ? " red" : "");
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      el.innerHTML = `<div class="tc-rank">${RANK_NAME[rank]}</div><div class="tc-suit">${SUIT_GLYPH[suit]}</div>`;
+      host.appendChild(el);
+    }
+
+    // ---- Diagnostics: show the answer as VISIBLE text on the page (no console) ----
+    function rect(id){ const r=document.getElementById(id).getBoundingClientRect(); return `${Math.round(r.width)}x${Math.round(r.height)} @ ${Math.round(r.left)},${Math.round(r.top)} (bottom ${Math.round(r.bottom)})`; }
+    setTimeout(() => {
+      const cards = host.querySelectorAll(".table-card");
+      const tr = document.getElementById("table").getBoundingClientRect();
+      const cr = cards[0].getBoundingClientRect();
+      const cs = getComputedStyle(cards[0]);
+      const inside = cr.left >= tr.left && cr.right <= tr.right && cr.top >= tr.top && cr.bottom <= tr.bottom;
+      const cx = tr.left + tr.width/2, cy = tr.top + tr.height/2;
+      const top = document.elementFromPoint(cx, cy);
+
+      const lines = [
+        ["VIEWPORT", window.innerWidth + "x" + window.innerHeight],
+        ["HUD", rect("hud")],
+        ["TABLE-WRAP", rect("table-wrap")],
+        ["TABLE", rect("table")],
+        ["HAND-WRAP", rect("hand-wrap")],
+        ["played-cards count", cards.length],
+        ["card[0] size/pos", Math.round(cr.width)+"x"+Math.round(cr.height)+" @ "+Math.round(cr.left)+","+Math.round(cr.top)],
+        ["card[0] opacity", cs.opacity],
+        ["card[0] transform", cs.transform === "none" ? "NONE (!)" : cs.transform],
+        ["card[0] INSIDE table?", inside ? "YES" : "NO  <-- cards landed outside the felt!"],
+        ["element AT table center", top ? (top.id || top.className || top.tagName) : "none  <-- nothing covering"],
+      ];
+      console.log(lines);
+      // Render as a big visible panel so no console is needed.
+      const panel = document.createElement("div");
+      panel.style.cssText = "position:fixed;left:12px;top:12px;z-index:9999;background:rgba(0,0,0,.92);color:#7dffa7;border:2px solid #f5c542;border-radius:12px;padding:14px 18px;font:14px/1.7 ui-monospace,Consolas,monospace;max-width:560px;white-space:pre;";
+      panel.textContent = "=== CARD DIAGNOSTICS ===\n" + lines.map(([k,v]) => (k + ": " + v)).join("\n");
+      document.body.appendChild(panel);
+    }, 400);
+  </script>
+</body>
+</html>
