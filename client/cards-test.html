@@ -136,8 +136,24 @@
       // Render as a big visible panel so no console is needed.
       const panel = document.createElement("div");
       panel.style.cssText = "position:fixed;left:12px;top:12px;z-index:9999;background:rgba(0,0,0,.92);color:#7dffa7;border:2px solid #f5c542;border-radius:12px;padding:14px 18px;font:14px/1.7 ui-monospace,Consolas,monospace;max-width:560px;white-space:pre;";
-      panel.textContent = "=== CARD DIAGNOSTICS ===\n" + lines.map(([k,v]) => (k + ": " + v)).join("\n");
-      document.body.appendChild(panel);
+      const out = "=== CARD DIAGNOSTICS ===\n" + lines.map(([k,v]) => (k + ": " + v)).join("\n");
+      panel.textContent = out;
+
+      // A big Copy button so the user can grab the text without selecting it.
+      const copyBtn = document.createElement("button");
+      copyBtn.textContent = "📋 Copy this text";
+      copyBtn.style.cssText = "display:block;margin:0 0 10px;padding:10px 16px;font-size:15px;font-weight:700;cursor:pointer;border:2px solid #f5c542;border-radius:8px;background:#f5c542;color:#000;";
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(out).then(() => {
+          copyBtn.textContent = "✅ Copied! Now paste it in the chat";
+          copyBtn.style.background = "#46a069"; copyBtn.style.color = "#fff"; copyBtn.style.borderColor = "#46a069";
+        }).catch(() => { copyBtn.textContent = "Copy failed — try selecting manually"; });
+      };
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "position:fixed;left:12px;top:12px;z-index:9999;max-width:580px;";
+      wrap.appendChild(copyBtn);
+      wrap.appendChild(panel);
+      document.body.appendChild(wrap);
     }, 400);
   </script>
 </body>
