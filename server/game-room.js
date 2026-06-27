@@ -29,6 +29,7 @@ function makeSeats() {
     team: teamForSeat(i),
     isBot: true,
     isHuman: false,
+    isAuthenticated: false,   // true only for a logged-in user (has a real User row)
     sessionId: null,
     name: `Bot ${i + 1}`,
     hand: [],
@@ -118,6 +119,7 @@ export class GameRoom {
     const seat = this.seats[seatIdx];
     seat.isBot = false;
     seat.isHuman = true;
+    seat.isAuthenticated = !!(ws && ws.userId);   // logged-in? then sessionId === a real User id
     seat.sessionId = sessionId;
     seat.name = name || `Player ${seatIdx + 1}`;
     seat.isConnected = true;
@@ -149,6 +151,7 @@ export class GameRoom {
     // Take the target seat (same field set as addHuman).
     target.isBot = false;
     target.isHuman = true;
+    target.isAuthenticated = !!(ws && ws.userId);   // logged-in? then sessionId === a real User id
     target.sessionId = sessionId;
     target.name = name || `Player ${targetIdx + 1}`;
     target.isConnected = true;
@@ -163,6 +166,7 @@ export class GameRoom {
       const old = this.seats[oldIdx];
       old.isBot = true;
       old.isHuman = false;
+      old.isAuthenticated = false;
       old.sessionId = null;
       old.name = `Bot ${oldIdx + 1}`;
       old.hand = [];
@@ -534,7 +538,7 @@ export class GameRoom {
   // so it's unit-testable without coupling. Exported for tests.
   static classifySeats(seats, winningTeam) {
     return seats
-      .filter((s) => s.isHuman && s.sessionId)
+      .filter((s) => s.isHuman && s.isAuthenticated && s.sessionId)
       .map((s) => {
         const draw = winningTeam === null;
         const won = !draw && s.team === winningTeam;
@@ -556,29 +560,23 @@ export class GameRoom {
     const db = getDb();
     if (!db) return; // accounts not configured — anonymous play only
     const updates = GameRoom.classifySeats(this.seats, winningTeam);
-    if (!updates.length) return;
-    // Fire-and-forget: resolve the transaction but never let it reject into the
-    // match-end path. Each update targets a User row by id; a guest's id won't
-    // match (P2025), which we swallow per-update.
+    if (!updates.length) return;   // no authenticated humans — guests are excluded
+    // Fire-and-forget: $transaction needs an array of RAW Prisma promises — do
+    // NOT chain .catch() on each element (that breaks the contract and throws
+    // "All elements of the array need to be Prisma Client promises"). The outer
+    // .catch() handles any rejection so it never reaches the match-end path.
     db.$transaction(
       updates.map((u) =>
-        db.user
-          .update({
-            where: { id: u.sessionId },
-            data: {
-              matchesPlayed: { increment: 1 },
-              wins: { increment: u.won ? 1 : 0 },
-              losses: { increment: u.lost ? 1 : 0 },
-              draws: { increment: u.draw ? 1 : 0 },
-              tensCaptured: { increment: u.tens },
-            },
-          })
-          .catch((e) => {
-            // P2025 = row not found (a guest whose sessionId isn't a real User id).
-            if (e && e.code !== "P2025") {
-              this.log.push(`stats update failed for ${u.sessionId}: ${e.message || e}`);
-            }
-          })
+        db.user.update({
+          where: { id: u.sessionId },
+          data: {
+            matchesPlayed: { increment: 1 },
+            wins: { increment: u.won ? 1 : 0 },
+            losses: { increment: u.lost ? 1 : 0 },
+            draws: { increment: u.draw ? 1 : 0 },
+            tensCaptured: { increment: u.tens },
+          },
+        })
       )
     ).catch((e) => {
       this.log.push(`stats transaction failed: ${e.message || e}`);
