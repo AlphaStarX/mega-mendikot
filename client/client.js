@@ -1722,3 +1722,12 @@ if (state.token) {
 // ?debug=1&key=SECRET on live). hook() wires the trace; if debug.js never loaded,
 // window.__dbg is undefined and this is a no-op. Normal players see nothing.
 if (window.__dbg) window.__dbg.hook({ state, showScreen });
+
+// Live presence poll: refresh the Online Players / Active Rooms counters every
+// 10s while the home screen is visible, so they tick as people join/leave the
+// site. Cheap one-message round-trip; ignored server-side when not requested.
+setInterval(() => {
+  if (!$("join-screen").classList.contains("hidden") && state.ws && state.ws.readyState === 1) {
+    send({ t: "getPresence" });
+  }
+}, 10000);
