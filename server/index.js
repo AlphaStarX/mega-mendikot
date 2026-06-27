@@ -387,6 +387,20 @@ function handleMessage(ws, msg) {
       }
       break;
     case "ping": send(ws, { t: "pong" }); break;
+    case "getPresence":
+      // Live "Online Players" + "Active Rooms" counters for the home screen.
+      // Online = sum of connected humans across all rooms; Active rooms = rooms
+      // that aren't empty (have at least one human). Cheap to compute (in-memory
+      // room registry); no DB access. Guests can request this too.
+      {
+        let onlinePlayers = 0, activeRooms = 0;
+        for (const room of rooms.values()) {
+          const humans = room.humanCount();
+          if (humans > 0) { activeRooms++; onlinePlayers += humans; }
+        }
+        send(ws, { t: "presence", onlinePlayers, activeRooms });
+      }
+      break;
   }
 }
 

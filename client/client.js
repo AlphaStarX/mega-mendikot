@@ -221,6 +221,7 @@ function handle(m) {
     case "profileUpdated": onProfileUpdated(m); break;
     case "stats": onStats(m); break;
     case "leaderboard": onLeaderboard(m); break;
+    case "presence": onPresence(m); break;
     case "lobbyUpdate": onLobbyUpdate(m); break;
     case "yourSeat": state.you = m.seat; break;   // reliable seat identity in the lobby
     case "leadSelectEnter": onLeadSelectEnter(m); break;
@@ -270,6 +271,7 @@ function onAuthOk(m) {
 function refreshDash() {
   if (state.ws && state.ws.readyState === 1) {
     send({ t: "getLeaderboard" });   // public; always works
+    send({ t: "getPresence" });      // online players + active rooms counters
     if (state.authenticated) send({ t: "getStats" });
     renderDashStats();               // render whatever we have immediately
   }
@@ -342,6 +344,17 @@ function onLeaderboard(m) {
   // Refresh the dashboard right-rail if the home screen is visible.
   const dash = $("dash-topplayers");
   if (dash && !$("join-screen").classList.contains("hidden")) renderDashStats();
+}
+
+// ---------- presence (online players + active rooms) ----------
+// Live counters for the home screen's left-rail info chips. Populates the
+// #dash-online / #dash-rooms elements (which render a "—" placeholder until
+// the first presence reply arrives).
+function onPresence(m) {
+  const online = $("dash-online");
+  const rooms = $("dash-rooms");
+  if (online) online.textContent = (m && typeof m.onlinePlayers === "number") ? m.onlinePlayers : "—";
+  if (rooms) rooms.textContent = (m && typeof m.activeRooms === "number") ? m.activeRooms : "—";
 }
 
 // Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
@@ -888,6 +901,9 @@ function showScreen(id) {
   // The in-match "?" help button is only relevant while playing.
   const help = $("game-help-btn");
   if (help) help.classList.toggle("hidden", id !== "game-screen");
+  // Returning to the home screen: refresh live counters (online players /
+  // active rooms) + the stats/leaderboard rails so they're current.
+  if (id === "join-screen") refreshDash();
 }
 
 // ---------- auth UI helpers (Phase 1) ----------
