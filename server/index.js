@@ -181,6 +181,9 @@ const wss = { _listeners: {}, emit(ev, ...a) { (this._listeners[ev] || []).forEa
 
 // --- Room registry ---
 const rooms = new Map(); // roomId -> GameRoom
+// Every live WebSocket connection (any client with the page open — logged-in or
+// guest, on the home screen or mid-match). Used for the "Online Players" count.
+const sockets = new Set();
 function makeRoomId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
   let id;
@@ -235,6 +238,7 @@ setInterval(() => {
 
 // --- Connection handling ---
 wss.on("connection", (ws) => {
+  sockets.add(ws);
   send(ws, { t: "hello" });
 
   ws.on("message", (raw) => {
@@ -244,6 +248,7 @@ wss.on("connection", (ws) => {
   });
 
   ws.on("close", () => {
+    sockets.delete(ws);
     if (ws.room && ws.seat !== null) {
       ws.room.onHumanDisconnect(ws.seat);
       if (ws.room.matchState === "LOBBY") ws.room.broadcastLobby();
@@ -387,6 +392,19 @@ function handleMessage(ws, msg) {
       }
       break;
     case "ping": send(ws, { t: "pong" }); break;
+    case "getPresence":
+      // Live "Online Players" + "Active Rooms" counters for the home screen.
+      // Online = every connected socket (anyone with the page open — logged-in
+      // OR guest, home screen OR mid-match), so the count reflects everyone
+      // currently on the site. Active rooms = rooms with at least one human.
+      {
+        let activeRooms = 0;
+        for (const room of rooms.values()) {
+          if (room.humanCount() > 0) activeRooms++;
+        }
+        send(ws, { t: "presence", onlinePlayers: sockets.size, activeRooms });
+      }
+      break;
   }
 }
 

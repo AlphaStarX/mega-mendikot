@@ -426,12 +426,12 @@ test("resetToLobby: rejects when not FINISHED", () => {
 
 test("classifySeats: Team A wins -> A humans won, B humans lost", () => {
   const seats = [
-    { isHuman: true,  sessionId: "u1", team: "A", tens: 3 },
-    { isHuman: true,  sessionId: "u2", team: "B", tens: 1 },
-    { isHuman: false, sessionId: null, team: "A", tens: 0 }, // bot — filtered
+    { isHuman: true, isAuthenticated: true,  sessionId: "u1", team: "A", tens: 3 },
+    { isHuman: true, isAuthenticated: true,  sessionId: "u2", team: "B", tens: 1 },
+    { isHuman: false, isAuthenticated: false, sessionId: null, team: "A", tens: 0 }, // bot — filtered
   ];
   const out = GameRoom.classifySeats(seats, "A");
-  assert.equal(out.length, 2, "only the two humans");
+  assert.equal(out.length, 2, "only the two authenticated humans");
   assert.equal(out[0].sessionId, "u1");
   assert.equal(out[0].won, true, "A human won");
   assert.equal(out[0].lost, false);
@@ -445,8 +445,8 @@ test("classifySeats: Team A wins -> A humans won, B humans lost", () => {
 
 test("classifySeats: winningTeam null -> everyone draws", () => {
   const seats = [
-    { isHuman: true, sessionId: "u1", team: "A", tens: 2 },
-    { isHuman: true, sessionId: "u2", team: "B", tens: 2 },
+    { isHuman: true, isAuthenticated: true, sessionId: "u1", team: "A", tens: 2 },
+    { isHuman: true, isAuthenticated: true, sessionId: "u2", team: "B", tens: 2 },
   ];
   const out = GameRoom.classifySeats(seats, null);
   assert.equal(out.length, 2);
@@ -454,11 +454,11 @@ test("classifySeats: winningTeam null -> everyone draws", () => {
   assert.equal(out.every((u) => !u.won && !u.lost), true, "no win/loss on a draw");
 });
 
-test("classifySeats: guests (no sessionId) and bots are skipped", () => {
+test("classifySeats: guests (unauthenticated) and bots are skipped", () => {
   const seats = [
-    { isHuman: true,  sessionId: "real-user-id", team: "A", tens: 4 },
-    { isHuman: true,  sessionId: null,           team: "B", tens: 0 }, // guest — skipped
-    { isHuman: false, sessionId: null,           team: "A", tens: 0 }, // bot — skipped
+    { isHuman: true,  isAuthenticated: true,  sessionId: "real-user-id", team: "A", tens: 4 },
+    { isHuman: true,  isAuthenticated: false, sessionId: "guest-hex",    team: "B", tens: 0 }, // guest — skipped
+    { isHuman: false, isAuthenticated: false, sessionId: null,           team: "A", tens: 0 }, // bot — skipped
   ];
   const out = GameRoom.classifySeats(seats, "A");
   assert.equal(out.length, 1, "only the authenticated human remains");
