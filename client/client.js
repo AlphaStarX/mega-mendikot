@@ -194,6 +194,27 @@ function connect(name, opts = {}) {
   };
 }
 
+// Open a HOME-ONLY socket (used by the end-screen Leave path). Unlike connect(),
+// this does NOT send a join/quick-match — it just re-establishes a live socket so
+// the home dashboard can re-authenticate (if logged in) and fetch fresh stats +
+// leaderboard. Without this, closing the room socket on Leave leaves the home
+// screen with a dead socket, so its stats tiles show stale pre-match XP/level
+// until a manual page refresh. onAuthOk → refreshDash pulls the fresh data for
+// authenticated players; guests get a connected (but unseated) socket.
+function reopenHomeSocket() {
+  if (state.ws && state.ws.readyState === 1) return;   // already live — nothing to do
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  state.ws = new WebSocket(`${proto}://${location.host}/ws`);
+  state.ws.onopen = () => {
+    // If we have a session token, re-authenticate — the server's authOk reply
+    // carries fresh stats + triggers refreshDash via onAuthOk.
+    if (state.token) send({ t: "authenticate", token: state.token });
+    else refreshDash();   // guest: just pull presence/leaderboard for the rail
+  };
+  state.ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handle(m); };
+  state.ws.onclose = () => { /* home-only socket: no auto-reconnect here */ };
+}
+
 // Send the join message (extracted so auth can defer it).
 function sendJoin(name, mode, roomId) {
   send({
@@ -1640,6 +1661,12 @@ if (endLeaveBtn) {
     state.you = null; state.room = null;
     showChatPanel(false);
     showScreen("join-screen");
+    // Closing the socket above is how we "leave" the room, but it also drops the
+    // connection the home dashboard fetches through (refreshDash's send is silently
+    // dropped on a closed socket). Reopen a HOME-ONLY socket — authenticate and
+    // pull fresh stats/leaderboard, but do NOT auto-join a game (connect() defaults
+    // to a quick-match join, which would dump the player straight into a new match).
+    reopenHomeSocket();
   });
 }
 // Voice mic toggle (match-only; button is hidden until voice connects).
