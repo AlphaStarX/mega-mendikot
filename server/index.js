@@ -20,7 +20,7 @@ import {
 import { getDb, closeDb } from "./db.js";
 import { debugAllowed } from "./debug-gate.js";
 import { computeLeaderboardRows, LEADERBOARD_MAX_ROWS } from "./leaderboard.js";
-import { generatePlayerId, isValidCountry, isValidAvatar, levelFromXp } from "../shared/identity.js";
+import { generatePlayerId, isValidCountry, isValidAvatar, levelFromXp, normalizePlayerId } from "../shared/identity.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -184,6 +184,46 @@ const rooms = new Map(); // roomId -> GameRoom
 // Every live WebSocket connection (any client with the page open — logged-in or
 // guest, on the home screen or mid-match). Used for the "Online Players" count.
 const sockets = new Set();
+// Phase 6 — per-user socket index: userId -> Set<ws>. Lets us push real-time
+// notifications (friend requests, room invites) to an online user OUTSIDE the
+// sender's current room — the flat `sockets` set can't look up "is user X here".
+// A user may have multiple open sockets (multiple tabs), so it's a Set. Only
+// AUTHENTICATED sockets are tracked (guests have no userId to key on).
+const userSockets = new Map();
+// Track a socket under its userId (called on auth). Idempotent across reconnects.
+function trackUserSocket(ws) {
+  if (!ws || !ws.userId) return;
+  let set = userSockets.get(ws.userId);
+  if (!set) { set = new Set(); userSockets.set(ws.userId, set); }
+  set.add(ws);
+}
+// Drop a socket from its user's set (called on close). Cleans up empty sets.
+function untrackUserSocket(ws) {
+  if (!ws || !ws.userId) return;
+  const set = userSockets.get(ws.userId);
+  if (!set) return;
+  set.delete(ws);
+  if (set.size === 0) userSockets.delete(ws.userId);
+}
+// Push a message to every open socket of an online user. Returns true if delivered
+// (user online + at least one open socket), false if offline. Best-effort: a socket
+// that died but hasn't fired `close` yet is skipped (readyState check).
+function sendToUser(userId, msg) {
+  const set = userSockets.get(userId);
+  if (!set || set.size === 0) return false;
+  let delivered = false;
+  for (const ws of set) {
+    if (ws.readyState === 1) { send(ws, msg); delivered = true; }
+  }
+  return delivered;
+}
+// Is a user currently online (any open authenticated socket)?
+function isUserOnline(userId) {
+  const set = userSockets.get(userId);
+  if (!set || set.size === 0) return false;
+  for (const ws of set) if (ws.readyState === 1) return true;
+  return false;
+}
 function makeRoomId() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no ambiguous chars
   let id;
@@ -249,6 +289,7 @@ wss.on("connection", (ws) => {
 
   ws.on("close", () => {
     sockets.delete(ws);
+    untrackUserSocket(ws);   // Phase 6 — stop pushing friend notifications to this socket
     if (ws.room && ws.seat !== null) {
       ws.room.onHumanDisconnect(ws.seat);
       if (ws.room.matchState === "LOBBY") ws.room.broadcastLobby();
@@ -405,6 +446,17 @@ function handleMessage(ws, msg) {
         send(ws, { t: "presence", onlinePlayers: sockets.size, activeRooms });
       }
       break;
+
+    // ---------- Phase 6: friends ----------
+    // All auth-gated + fail-soft (null DB → benign reply). Friendship rows are one
+    // per ordered pair: userId = requester, friendId = recipient, status pending
+    // until accepted. A single accepted row means BOTH are friends (app symmetry).
+    case "getFriends": return handleGetFriends(ws);
+    case "addFriend": return handleAddFriend(ws, msg);
+    case "acceptFriend": return handleAcceptFriend(ws, msg);
+    case "declineFriend": return handleDeclineFriend(ws, msg);
+    case "removeFriend": return handleRemoveFriend(ws, msg);
+    case "inviteFriend": return handleInviteFriend(ws, msg);
   }
 }
 
@@ -438,6 +490,7 @@ function authReplyOk(ws, user) {
   ws.country = user.country || null;   // cached for seat display (Phase 4)
   ws.avatar = user.avatar || null;
   ws.level = levelFromXp(user.xp || 0); // cached for the in-game/lobby level badge (Phase 5)
+  trackUserSocket(ws);                 // Phase 6 — index for friend pushes
   send(ws, {
     t: "authOk", token, userId: user.id, name: user.displayName,
     stats: statsOf(user),
@@ -545,6 +598,7 @@ function handleAuthenticate(ws, msg) {
       ws.avatar = user.avatar || null;
       ws.level = levelFromXp(user.xp || 0); // cached for the in-game/lobby level badge (Phase 5)
       ws.authenticated = true;
+      trackUserSocket(ws);                 // Phase 6 — index for friend pushes
       send(ws, {
         t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user),
         playerId: user.playerId || null, country: user.country || null, avatar: user.avatar || null,
@@ -554,6 +608,7 @@ function handleAuthenticate(ws, msg) {
 }
 
 function handleLogout(ws) {
+  untrackUserSocket(ws); // Phase 6 — stop pushing friend notifications to this socket
   ws.userId = null;
   ws.userName = null;
   ws.country = null;   // clear cached seat identity (Phase 4)
@@ -561,6 +616,169 @@ function handleLogout(ws) {
   ws.level = null;     // clear cached level badge (Phase 5)
   ws.authenticated = false;
   send(ws, { t: "loggedOut" });
+}
+
+// ---------- Phase 6: friends handlers ----------
+// The shared select for the "other user" in a friendship edge (must be defined
+// before replyFriends, which uses it).
+const FRIEND_USER_SELECT = { id: true, displayName: true, playerId: true, avatar: true, country: true, xp: true };
+// Shape a User row into the public friend-facing summary (id/name/avatar/country/
+// player-id + derived level + online flag). Reused by getFriends + notifications.
+function friendSummary(user) {
+  if (!user) return null;
+  return {
+    userId: user.id,
+    name: user.displayName || "Player",
+    playerId: user.playerId || null,
+    avatar: user.avatar || null,
+    country: user.country || null,
+    level: levelFromXp(user.xp || 0),
+    online: isUserOnline(user.id),
+  };
+}
+// Re-fetch + reply with the caller's friends + incoming requests. Fire this after
+// any friend mutation so the client's list is immediately fresh.
+function replyFriends(ws) {
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friends", list: [], requests: [] }); return; }
+  db.user.findUnique({
+    where: { id: ws.userId },
+    // accepted edges where I'm either side + pending requests I RECEIVED
+    select: {
+      outgoing: { where: { status: "accepted" }, include: { friend: FRIEND_USER_SELECT } },
+      incoming: { include: { user: FRIEND_USER_SELECT } },
+    },
+  })
+    .then((me) => {
+      if (!me) { send(ws, { t: "friends", list: [], requests: [] }); return; }
+      // My friends: people I have an accepted outgoing edge to, OR people whose
+      // accepted incoming edge points at me. (Either side = friends.)
+      const list = [];
+      const seen = new Set();
+      for (const f of me.outgoing || []) {
+        if (!seen.has(f.friend.id)) { seen.add(f.friend.id); list.push(friendSummary(f.friend)); }
+      }
+      const acceptedIncoming = (me.incoming || []).filter((f) => f.status === "accepted");
+      for (const f of acceptedIncoming) {
+        if (!seen.has(f.user.id)) { seen.add(f.user.id); list.push(friendSummary(f.user)); }
+      }
+      // Incoming PENDING requests = people who want to be my friend.
+      const requests = (me.incoming || []).filter((f) => f.status === "pending")
+        .map((f) => friendSummary(f.user));
+      send(ws, { t: "friends", list, requests });
+    })
+    .catch((e) => { console.error("getFriends error:", e); send(ws, { t: "friends", list: [], requests: [] }); });
+}
+
+function handleGetFriends(ws) { return replyFriends(ws); }
+
+function handleAddFriend(ws, msg) {
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friendError", error: "notAuthenticated" }); return; }
+  const playerId = normalizePlayerId(msg && msg.playerId);
+  if (!playerId) { send(ws, { t: "friendError", error: "invalidId" }); return; }
+  db.user.findUnique({ where: { playerId } })
+    .then(async (target) => {
+      if (!target) { send(ws, { t: "friendError", error: "notFound" }); return; }
+      if (target.id === ws.userId) { send(ws, { t: "friendError", error: "self" }); return; }
+      // Already friends or a pending request either direction?
+      const existing = await db.friendship.findFirst({
+        where: {
+          OR: [
+            { userId: ws.userId, friendId: target.id },
+            { userId: target.id, friendId: ws.userId },
+          ],
+        },
+      });
+      if (existing) {
+        send(ws, { t: "friendError", error: existing.status === "accepted" ? "alreadyFriends" : "pending" });
+        return;
+      }
+      await db.friendship.create({ data: { userId: ws.userId, friendId: target.id, status: "pending" } });
+      send(ws, { t: "friendAdded", ok: true });
+      // Push a live notification to the target if they're online (request pop-up).
+      sendToUser(target.id, { t: "friendRequest", from: friendSummary({ id: ws.userId, displayName: ws.userName, xp: 0 }) });
+      return replyFriends(ws);
+    })
+    .catch((e) => { console.error("addFriend error:", e); send(ws, { t: "friendError", error: "server" }); });
+}
+
+function handleAcceptFriend(ws, msg) {
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friendError", error: "notAuthenticated" }); return; }
+  const otherId = msg && msg.userId;
+  if (!otherId) { send(ws, { t: "friendError", error: "invalidId" }); return; }
+  // Only the pending request WHERE I AM THE RECIPIENT can be accepted by me.
+  db.friendship.updateMany({
+    where: { userId: otherId, friendId: ws.userId, status: "pending" },
+    data: { status: "accepted" },
+  })
+    .then((res) => {
+      if (!res || res.count === 0) { send(ws, { t: "friendError", error: "notFound" }); return; }
+      // Notify the requester their request was accepted (so their list refreshes).
+      sendToUser(otherId, { t: "friendAccepted", from: friendSummary({ id: ws.userId, displayName: ws.userName, xp: 0 }) });
+      return replyFriends(ws);
+    })
+    .catch((e) => { console.error("acceptFriend error:", e); send(ws, { t: "friendError", error: "server" }); });
+}
+
+function handleDeclineFriend(ws, msg) {
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friendError", error: "notAuthenticated" }); return; }
+  const otherId = msg && msg.userId;
+  if (!otherId) { send(ws, { t: "friendError", error: "invalidId" }); return; }
+  // Decline a pending request addressed to me.
+  db.friendship.deleteMany({ where: { userId: otherId, friendId: ws.userId, status: "pending" } })
+    .then(() => replyFriends(ws))
+    .catch((e) => { console.error("declineFriend error:", e); send(ws, { t: "friendError", error: "server" }); });
+}
+
+function handleRemoveFriend(ws, msg) {
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friendError", error: "notAuthenticated" }); return; }
+  const otherId = msg && msg.userId;
+  if (!otherId) { send(ws, { t: "friendError", error: "invalidId" }); return; }
+  // Remove the edge regardless of direction or status (severs the link either way).
+  db.friendship.deleteMany({
+    where: {
+      OR: [
+        { userId: ws.userId, friendId: otherId },
+        { userId: otherId, friendId: ws.userId },
+      ],
+    },
+  })
+    .then(() => replyFriends(ws))
+    .catch((e) => { console.error("removeFriend error:", e); send(ws, { t: "friendError", error: "server" }); });
+}
+
+function handleInviteFriend(ws, msg) {
+  // Live room invite: sender must be in a LOBBY-state private room with a code.
+  const db = getDb();
+  if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friendError", error: "notAuthenticated" }); return; }
+  const friendId = msg && msg.userId;
+  if (!friendId) { send(ws, { t: "friendError", error: "invalidId" }); return; }
+  const room = ws.room;
+  const code = room && room.roomId;
+  const inLobby = room && room.matchState === "LOBBY";
+  if (!inLobby || !code) { send(ws, { t: "friendError", error: "notInRoom" }); return; }
+  // Only invite accepted friends.
+  db.friendship.findFirst({
+    where: {
+      status: "accepted",
+      OR: [{ userId: ws.userId, friendId }, { userId: friendId, friendId: ws.userId }],
+    },
+  })
+    .then((edge) => {
+      if (!edge) { send(ws, { t: "friendError", error: "notFriends" }); return; }
+      const delivered = sendToUser(friendId, {
+        t: "friendInvite",
+        from: friendSummary({ id: ws.userId, displayName: ws.userName, xp: 0 }),
+        room: code,
+        roomName: `Room ${code}`,
+      });
+      send(ws, { t: "friendInviteSent", ok: true, delivered });
+    })
+    .catch((e) => { console.error("inviteFriend error:", e); send(ws, { t: "friendError", error: "server" }); });
 }
 
 function handleJoin(ws, msg) {

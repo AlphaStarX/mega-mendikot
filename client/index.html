@@ -40,6 +40,7 @@
             <button class="dash-nav-item" data-action="howto"><span class="dni-ico">📖</span> How to Play</button>
             <button class="dash-nav-item" data-action="profile"><span class="dni-ico">📊</span> My Stats</button>
             <button class="dash-nav-item" data-action="leaderboard"><span class="dni-ico">🏆</span> Leaderboard</button>
+            <button class="dash-nav-item" data-action="friends" id="nav-friends"><span class="dni-ico">👥</span> Friends</button>
 
             <div class="dash-nav-info">
               <div class="dash-chip">
@@ -119,6 +120,10 @@
                 <span class="db-label">🏆 Leaderboard</span>
                 <span class="db-sub">See who's topping the table</span>
               </button>
+              <button id="friends-btn" class="dash-btn green hidden">
+                <span class="db-label">👥 Friends</span>
+                <span class="db-sub">Add friends &amp; invite them to play</span>
+              </button>
             </div>
 
             <!-- Room code join section — one row: label · short input · Join button -->
@@ -186,6 +191,7 @@
         <p class="lobby-hint">Pick your seat · blue = Team A, red = Team B</p>
         <div id="lobby-seats" class="lobby-seats"></div>
         <div class="lobby-actions">
+          <button id="lobby-invite-btn" class="lobby-invite-btn hidden">👥 Invite a Friend</button>
           <button id="lobby-start-btn" class="primary hidden">Start Game</button>
           <p id="lobby-waiting" class="hint hidden">Waiting for host to start…</p>
         </div>
@@ -294,6 +300,40 @@
         </div>
       </div>
     </section>
+
+    <!-- Phase 6 — Friends screen -->
+    <section id="friends-screen" class="screen hidden">
+      <div class="card-panel friends-panel">
+        <h1>👥 Friends</h1>
+        <!-- Add a friend by their player ID (#A4F2K style) -->
+        <div class="friend-add">
+          <input id="friend-id-input" type="text" maxlength="6" placeholder="Add by ID (e.g. A4F2K)" autocomplete="off" />
+          <button id="friend-add-btn" class="primary">Add</button>
+        </div>
+        <p id="friend-add-msg" class="hint"></p>
+        <!-- Incoming friend requests -->
+        <h3 class="friends-section-title">Requests <span id="friends-req-count" class="friends-badge hidden">0</span></h3>
+        <div id="friends-requests"></div>
+        <!-- My friends -->
+        <h3 class="friends-section-title">Your Friends <span id="friends-count" class="friends-count-badge">0</span></h3>
+        <div id="friends-list"></div>
+        <div class="menu-buttons" style="margin-top:20px">
+          <button id="friends-back-btn">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Phase 6 — incoming room-invite modal (shown when a friend invites you) -->
+    <div id="invite-modal" class="invite-modal hidden" role="dialog" aria-modal="true">
+      <div class="invite-modal-card">
+        <h3>You're Invited! 🎴</h3>
+        <p id="invite-modal-text"></p>
+        <div class="invite-modal-actions">
+          <button id="invite-accept-btn" class="primary">Join Room</button>
+          <button id="invite-decline-btn">Decline</button>
+        </div>
+      </div>
+    </div>
   </div>
   <!-- LiveKit browser SDK (team voice, §6.1). Vendored (self-hosted) so voice
        does not depend on a third-party CDN (which can be geo-blocked or

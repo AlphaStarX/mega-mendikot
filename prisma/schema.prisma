@@ -45,7 +45,32 @@ model User {
   xp    Int @default(0)
   level Int @default(1)
 
+  // Phase 6 — friends. Back-relations for the Friendship model. A user has many
+  // outgoing requests (they sent them) and many incoming (they're the recipient).
+  incoming Friendship[] @relation("FriendshipFriend")
+  outgoing Friendship[] @relation("FriendshipUser")
+
   @@index([email])
   @@index([wins])   // Phase 3 — backs the leaderboard's ORDER BY wins DESC
   @@index([playerId]) // Phase 4 — backs future "add friend by ID" lookup (Phase 6)
+}
+
+// Phase 6 — friendship edges. One row per ordered pair: userId = requester,
+// friendId = recipient. status "pending" until the recipient accepts (then
+// "accepted" = mutual friendship, app-level symmetry — NOT two rows). On delete
+// of either user the edge cascades away. The unique pair prevents duplicate
+// requests; the status indexes back the "my friends" + "incoming requests" queries.
+model Friendship {
+  id        String   @id @default(cuid())
+  userId    String   // requester
+  friendId  String   // recipient
+  status    String   @default("pending")  // "pending" | "accepted"
+  createdAt DateTime @default(now())
+
+  user   User @relation("FriendshipUser", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([userId, status])   // "my friends" / "my outgoing requests"
+  @@index([friendId, status]) // "incoming requests"
 }

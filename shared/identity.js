@@ -25,6 +25,19 @@ export function generatePlayerId() {
   }
   return id;
 }
+
+// Phase 6 — normalize a player-ID typed by a user (for "add friend by ID").
+// Strips an optional leading '#', surrounding whitespace, and uppercases. Returns
+// "" for anything that isn't a valid code after cleanup (wrong length / bad chars),
+// so callers can treat "" as "invalid input" without a separate validator. Pure.
+export function normalizePlayerId(input) {
+  if (typeof input !== "string") return "";
+  let s = input.trim().toUpperCase();
+  if (s.startsWith("#")) s = s.slice(1).trim();
+  if (s.length !== PLAYER_ID_LENGTH) return "";
+  for (const ch of s) if (!PLAYER_ID_ALPHABET.includes(ch)) return "";
+  return s;
+}
 function cryptoRand(max) {
   const buf = new Uint8Array(1);
   globalThis.crypto.getRandomValues(buf);

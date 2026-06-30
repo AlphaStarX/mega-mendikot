@@ -67,5 +67,18 @@ window.IDENTITY = (function () {
     return { level, floor, ceil, into: xp - floor, span: ceil - floor };
   }
 
-  return { AVATAR_OPTIONS, AVATAR_SET, COUNTRY_OPTIONS, flagEmoji, levelFromXp, xpToReachLevel, xpProgress };
+  // --- Phase 6: normalize a friend-ID input. Mirror of shared/identity.js. ---
+  // Strips a leading '#', trims, uppercases; returns "" if not a valid code.
+  const PLAYER_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const PLAYER_ID_LENGTH = 5;
+  function normalizePlayerId(input) {
+    if (typeof input !== "string") return "";
+    let s = input.trim().toUpperCase();
+    if (s.startsWith("#")) s = s.slice(1).trim();
+    if (s.length !== PLAYER_ID_LENGTH) return "";
+    for (const ch of s) if (!PLAYER_ID_ALPHABET.includes(ch)) return "";
+    return s;
+  }
+
+  return { AVATAR_OPTIONS, AVATAR_SET, COUNTRY_OPTIONS, flagEmoji, levelFromXp, xpToReachLevel, xpProgress, normalizePlayerId };
 })();
