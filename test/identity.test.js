@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import {
   flagEmoji, isValidCountry, isValidAvatar, generatePlayerId,
   COUNTRY_OPTIONS, AVATAR_OPTIONS, AVATAR_SET, PLAYER_ID_ALPHABET, PLAYER_ID_LENGTH,
+  xpForOutcome, levelFromXp, xpToReachLevel, xpProgress,
+  XP_PER_WIN, XP_PER_DRAW, XP_PER_LOSS, XP_PER_TEN,
 } from "../shared/identity.js";
 
 // --- flagEmoji ---
@@ -95,4 +97,74 @@ test("COUNTRY_OPTIONS: codes are unique", () => {
 });
 test("flagEmoji: every country code in the list produces a flag", () => {
   for (const c of COUNTRY_OPTIONS) assert.ok(flagEmoji(c.code).length > 0, `no flag for ${c.code}`);
+});
+
+// --- Phase 5: XP + levels ---
+test("xpForOutcome: win = base 100 + 5 per ten", () => {
+  assert.equal(xpForOutcome({ won: true, tens: 0 }), XP_PER_WIN);
+  assert.equal(xpForOutcome({ won: true, tens: 3 }), 100 + 15);
+});
+test("xpForOutcome: draw = 40 + 5 per ten", () => {
+  assert.equal(xpForOutcome({ draw: true, tens: 0 }), XP_PER_DRAW);
+  assert.equal(xpForOutcome({ draw: true, tens: 2 }), 40 + 10);
+});
+test("xpForOutcome: loss = 15 + 5 per ten (won:false, draw:false)", () => {
+  assert.equal(xpForOutcome({ won: false, draw: false, tens: 0 }), XP_PER_LOSS);
+  assert.equal(xpForOutcome({ won: false, draw: false, tens: 6 }), 15 + 30);
+});
+test("xpForOutcome: defaults / bad input are safe (loss 15, no tens)", () => {
+  assert.equal(xpForOutcome({}), XP_PER_LOSS);
+  assert.equal(xpForOutcome(), XP_PER_LOSS);
+  assert.equal(xpForOutcome({ won: true, tens: -5 }), XP_PER_WIN); // negative tens clamped
+  assert.equal(xpForOutcome({ won: true, tens: "abc" }), XP_PER_WIN); // non-numeric tens -> 0
+});
+
+test("levelFromXp: 0 XP -> level 1; boundaries are exact", () => {
+  assert.equal(levelFromXp(0), 1);
+  assert.equal(levelFromXp(199), 1);
+  assert.equal(levelFromXp(200), 2);   // L2 threshold
+  assert.equal(levelFromXp(599), 2);
+  assert.equal(levelFromXp(600), 3);   // L3 threshold
+  assert.equal(levelFromXp(1200), 4);  // L4 threshold
+  assert.equal(levelFromXp(2000), 5);  // L5 threshold
+});
+test("levelFromXp: clamps negatives/non-numbers to level 1", () => {
+  assert.equal(levelFromXp(-50), 1);
+  assert.equal(levelFromXp(NaN), 1);
+  assert.equal(levelFromXp(undefined), 1);
+});
+test("levelFromXp: scales sensibly at higher XP", () => {
+  assert.equal(levelFromXp(10000), 10);   // ~50 wins
+  assert.equal(levelFromXp(100000), 32);  // a long-term player
+});
+
+test("xpToReachLevel: level 1 -> 0; the curve is 100*L*(L-1)", () => {
+  assert.equal(xpToReachLevel(1), 0);
+  assert.equal(xpToReachLevel(2), 200);
+  assert.equal(xpToReachLevel(3), 600);
+  assert.equal(xpToReachLevel(4), 1200);
+  assert.equal(xpToReachLevel(5), 2000);
+  assert.equal(xpToReachLevel(11), 11000); // 100*11*10
+});
+
+test("INVARIANT: levelFromXp(xpToReachLevel(L)) === L for L=1..30", () => {
+  for (let L = 1; L <= 30; L++) {
+    assert.equal(levelFromXp(xpToReachLevel(L)), L, `mismatch at level ${L}`);
+  }
+});
+
+test("xpProgress: returns level + within-level progress", () => {
+  // 800 XP -> level 3 (floor 600, next 1200), 200 into a 600 span.
+  const p = xpProgress(800);
+  assert.equal(p.level, 3);
+  assert.equal(p.floor, 600);
+  assert.equal(p.ceil, 1200);
+  assert.equal(p.into, 200);
+  assert.equal(p.span, 600);
+});
+test("xpProgress: 0 XP -> level 1, full span to next", () => {
+  const p = xpProgress(0);
+  assert.equal(p.level, 1);
+  assert.equal(p.into, 0);
+  assert.equal(p.span, 200);
 });

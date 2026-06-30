@@ -91,7 +91,7 @@ const state = {
   authenticated: false,
   authPending: null,   // deferred join waiting for auth to resolve
   // --- player stats (Phase 2) ---
-  stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured } | null
+  stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured, xp, level } | null
   // --- leaderboard (Phase 3) ---
   leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
   // --- player identity (Phase 4) ---
@@ -376,7 +376,7 @@ function renderLeaderboard() {
     const wr = r.winRate !== null && r.winRate !== undefined ? `<span class="lb-wr">${r.winRate}%</span>` : "";
     return `<div class="lb-row${isMe ? " me" : ""}">` +
       `<span class="lb-rank">${medal || r.rank}</span>` +
-      `<span class="lb-name">${r.avatar ? r.avatar + " " : ""}${r.country ? window.IDENTITY.flagEmoji(r.country) + " " : ""}${escapeHtml(r.name)}${isMe ? " (You)" : ""}</span>` +
+      `<span class="lb-name">${r.avatar ? r.avatar + " " : ""}${r.country ? window.IDENTITY.flagEmoji(r.country) + " " : ""}${escapeHtml(r.name)} ${levelBadgeHtml(r.level)}${isMe ? " (You)" : ""}</span>` +
       `<span class="lb-record"><b>${r.wins}</b>W · ${r.losses}L · ${r.draws}D ${wr}</span>` +
       `<span class="lb-matches">${r.matchesPlayed} games</span>` +
     `</div>`;
@@ -397,9 +397,11 @@ function renderDashStats() {
       const decisive = s.wins + s.losses;
       const wr = decisive ? Math.round((s.wins / decisive) * 100) : 0;
       mine.innerHTML =
+        `<div class="dash-stat-tile"><b>Lv ${levelOf(s)}</b><span>Level</span></div>` +
+        `<div class="dash-stat-tile"><b>${wr}%</b><span>Win Rate</span></div>` +
         `<div class="dash-stat-tile"><b>${s.matchesPlayed}</b><span>Games Played</span></div>` +
         `<div class="dash-stat-tile"><b>${s.wins}</b><span>Games Won</span></div>` +
-        `<div class="dash-stat-tile"><b>${wr}%</b><span>Win Rate</span></div>` +
+        `<div class="dash-stat-tile"><b>${(s.xp || 0).toLocaleString()}</b><span>XP</span></div>` +
         `<div class="dash-stat-tile"><b>${s.tensCaptured}</b><span>Tens Captured</span></div>`;
     }
   }
@@ -412,7 +414,7 @@ function renderDashStats() {
         const flag = r.country ? window.IDENTITY.flagEmoji(r.country) + " " : "";
         const av = r.avatar ? `<span class="dash-top-av">${r.avatar}</span>` : `<span class="dash-top-av emoji">${(escapeHtml(r.name) || "?").charAt(0).toUpperCase()}</span>`;
         const medal = r.rank === 1 ? "🥇" : r.rank === 2 ? "🥈" : r.rank === 3 ? "🥉" : r.rank;
-        return `<div class="dash-top-row">${av}<span class="dash-top-rank">${medal}</span><span class="dash-top-name">${flag}${escapeHtml(r.name)}</span><span class="dash-top-score">${r.wins}</span></div>`;
+        return `<div class="dash-top-row">${av}<span class="dash-top-rank">${medal}</span><span class="dash-top-name">${flag}${escapeHtml(r.name)}</span>${levelBadgeHtml(r.level)}<span class="dash-top-score">${r.wins}</span></div>`;
       }).join("");
     }
   }
@@ -504,7 +506,7 @@ function renderLobbySeats(m) {
       const flag = s.country ? window.IDENTITY.flagEmoji(s.country) + " " : "";
       el.innerHTML =
         `<span class="ls-num">${seatTag}</span>` +
-        `<span class="ls-name">${flag}${escapeHtml(s.name)}${crown}${youTag}</span>`;
+        `<span class="ls-name">${flag}${escapeHtml(s.name)} ${levelBadgeHtml(s.level)}${crown}${youTag}</span>`;
     }
     wrap.appendChild(el);
   });
@@ -977,8 +979,9 @@ function renderProfile() {
     `<div class="profile-header">` +
       `<div class="profile-avatar${state.avatar ? " is-emoji" : ""}">${avatarGlyph}</div>` +
       `<div class="profile-id">` +
-        `<div class="profile-name">${flag ? flag + " " : ""}${escapeHtml(state.userName || "Player")}</div>` +
+        `<div class="profile-name">${flag ? flag + " " : ""}${escapeHtml(state.userName || "Player")}<span class="level-badge">Lv ${levelOf(s)}</span></div>` +
         `<div class="profile-summary">${recordLine(s, winRate)}</div>` +
+        xpBarHtml(s) +
         `<div class="profile-playerid">${state.playerId ? `ID <code>#${state.playerId}</code>` : ""}</div>` +
       `</div>` +
     `</div>` +
@@ -988,6 +991,8 @@ function renderProfile() {
     // --- Stat tiles (2 rows of compact tiles) ---
     `<div class="profile-section-label">Lifetime Stats</div>` +
     `<div class="stats-grid">` +
+      statTile("Level", levelOf(s), "level", "🏅") +
+      statTile("XP", (s.xp || 0).toLocaleString(), "level", "✨") +
       statTile("Wins", s.wins, "win", "✓") +
       statTile("Losses", s.losses, "loss", "✕") +
       statTile("Draws", s.draws, "draw", "🤝") +
@@ -1019,6 +1024,26 @@ function recordLine(s, winRate) {
   if (!s.matchesPlayed) return "No matches yet — play your first game!";
   const wr = winRate !== null ? ` · ${winRate}% win rate` : "";
   return `${s.wins}W · ${s.losses}L · ${s.draws}D${wr}`;
+}
+
+// --- Phase 5: XP + levels ---
+// The displayed level: prefer the server-sent derived level; fall back to deriving
+// it from xp client-side (defensive — the two should always agree).
+function levelOf(s) { return (s && s.level) || (window.IDENTITY && window.IDENTITY.levelFromXp(s && s.xp || 0)) || 1; }
+// An XP progress bar for the profile header: shows progress within the current level.
+function xpBarHtml(s) {
+  if (!s) return "";
+  const xp = s.xp || 0;
+  if (!window.IDENTITY || !window.IDENTITY.xpProgress) return "";
+  const p = window.IDENTITY.xpProgress(xp);
+  const pct = p.span > 0 ? Math.min(100, Math.round((p.into / p.span) * 100)) : 0;
+  return `<div class="xp-bar"><div class="xp-fill" style="width:${pct}%"></div>` +
+    `<span class="xp-label">${p.into.toLocaleString()} / ${p.span.toLocaleString()} XP</span></div>`;
+}
+// A compact "Lv N" badge string for reuse in seat nameplates / leaderboard / dashboard.
+function levelBadgeHtml(level) {
+  const lv = level || 1;
+  return `<span class="level-badge${lv >= 10 ? " high" : ""}">Lv ${lv}</span>`;
 }
 
 // Phase 4 — the Identity edit section: shows current avatar + country with an
@@ -1200,7 +1225,7 @@ function renderSeats() {
     el.innerHTML = `
       <div class="avatar${s.avatar ? " is-emoji" : ""}">${avatarContent(s)}${timerRing}</div>
       ${leadCardHtml}
-      <div class="name">${s.country ? window.IDENTITY.flagEmoji(s.country) + " " : ""}${s.seat === state.you ? "You" : escapeHtml(s.name)}</div>
+      <div class="name">${s.country ? window.IDENTITY.flagEmoji(s.country) + " " : ""}${s.seat === state.you ? "You" : escapeHtml(s.name)} ${levelBadgeHtml(s.level)}</div>
       ${thinking ? '<div class="meta"><span class="thinking-dots"><span></span><span></span><span></span></span></div>' : ''}`;
     table.appendChild(el);
   });

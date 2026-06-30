@@ -527,6 +527,7 @@ body::after {
 .stat-tile-value { font-size: 28px; font-weight: 800; line-height: 1; }
 .stat-tile-label { font-size: 11px; color: var(--muted); letter-spacing: .5px; text-transform: uppercase; }
 /* Per-stat accent colors */
+.stat-tile.stat-level .stat-tile-value { color: var(--gold); }
 .stat-tile.stat-win .stat-tile-value { color: var(--gold); }
 .stat-tile.stat-loss .stat-tile-value { color: var(--red); }
 .stat-tile.stat-draw .stat-tile-value { color: var(--muted); }
@@ -624,6 +625,47 @@ body::after {
 .avatar-pick.selected { border-color: var(--gold); background: rgba(245,197,66,.2); }
 .identity-edit-actions { display: flex; gap: 10px; align-items: center; }
 .identity-edit-actions .primary { padding: 8px 18px; }
+
+/* ---------- Phase 5: level badge + XP progress bar ----------
+   The level badge is a small gold pill that travels with a player's name —
+   profile header, leaderboard rows, dashboard top-players, lobby + in-game seats.
+   Level >= 10 gets a brighter "high" treatment. The XP bar lives under the name
+   on the profile header only. */
+.level-badge {
+  display: inline-flex; align-items: center;
+  font-size: 10px; font-weight: 800; letter-spacing: .3px;
+  color: #2a1c00; line-height: 1;
+  padding: 2px 6px; margin-left: 4px; border-radius: 6px; vertical-align: middle;
+  background: linear-gradient(180deg, var(--gold-light), var(--gold) 48%, var(--gold-deep));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 1px 2px rgba(0,0,0,.4);
+  white-space: nowrap;
+}
+.level-badge.high {
+  background: linear-gradient(180deg, #fff3c4, #f5c542 40%, #c9952a);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 0 8px rgba(245,197,66,.55), 0 1px 2px rgba(0,0,0,.4);
+}
+/* Seat nameplates are small — shrink the badge there so it doesn't dominate. */
+.lobby-seat .level-badge, .seat .name .level-badge {
+  font-size: 9px; padding: 1px 4px; margin-left: 3px;
+}
+
+/* XP progress bar — under the player name on the Profile header. */
+.xp-bar {
+  position: relative; width: 100%; max-width: 220px; height: 16px; margin-top: 6px;
+  background: rgba(0,0,0,.4); border: 1px solid rgba(245,197,66,.3);
+  border-radius: 999px; overflow: hidden;
+}
+.xp-fill {
+  position: absolute; inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold) 50%, var(--gold-light));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
+  transition: width .4s ease;
+}
+.xp-label {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: var(--text);
+  text-shadow: 0 1px 2px rgba(0,0,0,.8);
+}
 
 /* In-match control cluster (Leave + help). Pinned to the top-RIGHT corner
    (position: fixed) to match the original placement, but sized to the same
