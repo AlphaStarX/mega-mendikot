@@ -891,6 +891,14 @@ function onMatchEnd(m) {
   const isHost = state.you === state.hostSeat;
   rematchBtn.textContent = isHost ? "Play Again" : "Waiting for host…";
   rematchBtn.disabled = !isHost;
+  // Re-fetch stats + leaderboard so the freshly-recorded XP/level + new rank show
+  // without needing a manual page refresh. (recordStats fires server-side at match
+  // end; by the time we reach the end screen it has run.) Authenticated players get
+  // stats; leaderboard is public. onStats/onLeaderboard re-render any visible screen.
+  if (state.ws && state.ws.readyState === 1) {
+    if (state.authenticated) send({ t: "getStats" });
+    send({ t: "getLeaderboard" });
+  }
   // The match is over — clear the in-progress game/ceremony state so a
   // subsequent match (via rematch or leave→new game) starts from a clean slate.
   resetMatchState();

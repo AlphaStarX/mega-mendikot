@@ -507,7 +507,7 @@ export class GameRoom {
     }, RESOLVE_DELAY_MS);
   }
 
-  endMatch(winningTeam) {
+  async endMatch(winningTeam) {
     this.stopTurnTimer();
     this.clearBot();
     if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
@@ -519,6 +519,14 @@ export class GameRoom {
     // deadlock flag = the 12-12 tiebreak path was taken (score tied at match end).
     // Lets the client distinguish a normal 13-Ten win from a tricks-decided win.
     const deadlock = this.score.A === this.score.B;
+    // Credit each authenticated human's lifetime stats BEFORE broadcasting
+    // matchEnd, and await the write. This guarantees the DB has committed the new
+    // XP/level/stats by the time the client reaches the end screen and re-fetches
+    // stats — no stale-data race (previously fire-and-forget, so a refresh could
+    // read pre-match values). Errors are still swallowed so a DB hiccup can't
+    // strand the players on a stuck matchEnd.
+    try { await this.recordStats(winningTeam); }
+    catch (e) { this.log.push(`recordStats failed at matchEnd: ${e && (e.message || e)}`); }
     this.broadcast({
       t: "matchEnd",
       winningTeam,            // "A" | "B" | null (null = draw)
@@ -531,11 +539,8 @@ export class GameRoom {
     if (winningTeam === null) {
       this.log.push(`Match ended in a DRAW. Final ${JSON.stringify(this.score)} tricks ${JSON.stringify(this.tricksWon)}.`);
     } else {
-      this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
+      this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}. tricks ${JSON.stringify(this.tricksWon)}.`);
     }
-    // Best-effort: credit each authenticated human's lifetime stats. Fire-and-
-    // forget — must NEVER break the match-end flow (no await, errors swallowed).
-    this.recordStats(winningTeam);
   }
 
   // Classify each seat's result given the winning team. Pure — no DB access —
@@ -563,22 +568,26 @@ export class GameRoom {
 
   // Record aggregate lifetime stats for every authenticated human. Guests
   // (sessionId with no matching User row) are skipped via a caught P2025. Fail-
-  // soft: no DB → no-op; any error is logged and swallowed.
+  // soft: no DB → no-op; any error is logged and swallowed. Returns a Promise
+  // (resolved immediately on the no-DB / no-humans no-op paths) so the caller
+  // (endMatch) can await it BEFORE broadcasting matchEnd — guaranteeing the new
+  // XP/level are committed before the client re-fetches stats.
   recordStats(winningTeam) {
     const db = getDb();
-    if (!db) return; // accounts not configured — anonymous play only
+    if (!db) return Promise.resolve(); // accounts not configured — anonymous play only
     const updates = GameRoom.classifySeats(this.seats, winningTeam);
-    if (!updates.length) return;   // no authenticated humans — guests are excluded
-    // Fire-and-forget: $transaction needs an array of RAW Prisma promises — do
-    // NOT chain .catch() on each element (that breaks the contract and throws
-    // "All elements of the array need to be Prisma Client promises"). The outer
-    // .catch() handles any rejection so it never reaches the match-end path.
+    if (!updates.length) return Promise.resolve(); // no authenticated humans — guests excluded
+    // $transaction needs an array of RAW Prisma promises — do NOT chain .catch()
+    // on each element (that breaks the contract and throws "All elements of the
+    // array need to be Prisma Client promises"). Return the promise so the caller
+    // can await; errors propagate to the caller's try/catch (still swallowed there
+    // so a DB hiccup can't strand the match-end flow).
     //
     // xp is incremented atomically here. level is derived from xp at READ time
     // (statsOf → levelFromXp), so it can never drift; we DON'T try to update the
     // stored level in this $transaction (array transactions can't read-then-write,
     // and a stale stored level is harmless since displays always derive from xp).
-    db.$transaction(
+    return db.$transaction(
       updates.map((u) =>
         db.user.update({
           where: { id: u.sessionId },
@@ -592,9 +601,7 @@ export class GameRoom {
           },
         })
       )
-    ).catch((e) => {
-      this.log.push(`stats transaction failed: ${e.message || e}`);
-    });
+    );
   }
 
   // Return a FINISHED room to LOBBY for "Play Again": zero all match state but
