@@ -1,7 +1,10 @@
 # Project Status — Mega Mindikot 5v5
 
-> **Last updated:** 2026-06-26 (home redesign + Phase 4 + game/lobby 1080p scaling promoted to `live`)
+> **Last updated:** 2026-06-27 (hotfix batch on `staging`, pending `live` promote: stats-recording bug fix + live Online/Rooms presence counters)
 > **Branch:** `staging` (production mirror: `live`, both on `github.com/AlphaStarX/mega-mindikot`)
+> **⚠️ `staging` is ahead of `live`:** a hotfix batch (stats `$transaction` fix, live
+> presence counters, played-card radius fix) is on `staging` and at
+> `staging.mindikot.com` but **NOT yet promoted to `live`**. See §4 + §8.
 > **Domain:** `mindikot.com` (registered at Porkbun) — `play.mindikot.com` (game),
 > `voice.mindikot.com` (LiveKit SFU), `mindikot.com` (apex, redirects to play.*)
 > **Host:** OVHcloud VPS-1 2027 (`vps-38d48eec.vps.ovh.ca`), Canada — Beauharnois (BHS),
@@ -126,13 +129,24 @@ dedicated Profile screen. Builds directly on Phase 1's `User` table.
 - **`recordStats()` in `endMatch()`** (`server/game-room.js`): at match end, each
   authenticated human's row is incremented (matches +1; wins/losses/draws per
   their team's result; tensCaptured += their seat's tens). The identity seam is
-  the existing one — an authenticated human's `User.id` already flows through as
-  `seat.sessionId`. Guests (sessionId with no matching row) are skipped via a
-  caught Prisma `P2025`. **Fire-and-forget** (never `await`ed, errors swallowed)
-  so stats recording can't break the match-end flow.
+  an `isAuthenticated` flag on the seat (set from `ws.userId` at join/seat-change)
+  — an authenticated human's `User.id` flows through as `seat.sessionId`.
+  **Fire-and-forget** (never `await`ed; the outer `.catch()` swallows errors into
+  `this.log` so stats recording can't break the match-end flow).
+  > **🐛 Bug found + fixed 2026-06-27 (on `staging`, pending `live`):** the original
+  > `recordStats` chained `.catch()` onto each promise inside the Prisma
+  > `$transaction([...])` array. Prisma requires **raw Prisma Client promises**
+  > there — `.catch()` converts them to plain Promises, so the whole transaction
+  > threw `All elements of the array need to be Prisma Client promises` *before
+  > running any update*. The error was swallowed into `this.log` (never surfaced),
+  > so **every match's stats + leaderboard write silently failed in production.**
+  > Fix: removed the per-element `.catch()` (outer `.catch()` still guards); added
+  > the `isAuthenticated` seat flag so guests are excluded from the transaction
+  > (their random-hex sessionIds have no User row and would roll it back).
 - **Pure classification** (`GameRoom.classifySeats(seats, winningTeam)` static):
-  maps each human seat to `{won, lost, draw, tens}` — unit-tested in isolation
-  with no DB. Handles the `winningTeam === null` (draw) and 12-12 deadlock cases.
+  maps each **authenticated** human seat to `{won, lost, draw, tens}` — unit-tested
+  in isolation with no DB. Handles the `winningTeam === null` (draw) and 12-12
+  deadlock cases. (Filtered on `isAuthenticated` so guests never reach the DB.)
 - **Stats ride auth responses**: `authOk` (login/signup/session-restore) now
   includes `stats: {wins,losses,draws,matchesPlayed,tensCaptured}`, so the client
   has data immediately on login without a round-trip. A `getStats` message
@@ -215,8 +229,8 @@ work; zero game-logic or server changes.
   - **Left nav rail** (`.dash-nav`): nav items (Home, Quick Match, Private Room,
     How to Play, My Stats, Leaderboard) that *dispatch* to the canonical hidden
     buttons (one delegated listener → `btn.click()`), so the visual nav and the
-    real wiring stay decoupled. Bottom info chips: Online Players, Active Rooms,
-    Community.
+    real wiring stay decoupled. Bottom info chips: **Online Players** +
+    **Active Rooms** (live — see presence below) + Community.
   - **Center hero** (`.dash-main`): a **framed glass hero panel** (`#hero-panel`)
     with a "Welcome Back" greeting (→ "Welcome back, **Name**!" when logged in),
     subtitle, the 3-card fan (A♠ · K♥ · Q♣), and a **5-stat row** with large
@@ -260,6 +274,28 @@ automatically; no JS/server changes).
 - **Lobby**: panel `760 → 1040px` + `max-height:94vh`/`overflow-y:auto` (no more
   cut-off top/bottom); seat oval `64→66vh`; seats `12→14px`.
 - **Mobile breakpoints untouched** (`@media max-width: 600px` / `480px`).
+
+### ✅ Live presence counters — Online Players + Active Rooms (staging, pending live)
+The home-screen info chips are now backed by real, live data (they were static
+`—` placeholders when first added during the home redesign). **On `staging` —
+not yet promoted to `live`.**
+
+- **`getPresence`** (`server/index.js`): computes and replies
+  `{ t: "presence", onlinePlayers, activeRooms }`.
+  - **onlinePlayers** = `sockets.size` — **every connected WebSocket** (anyone with
+    the page open: guest OR logged-in, home screen OR mid-match). The server keeps
+    a `sockets` Set (add on connect, remove on close). *Earlier version only counted
+    players seated in a room, so the count stayed flat on the home screen and
+    dropped to 0 when a match ended — fixed.*
+  - **activeRooms** = rooms with ≥1 human.
+  - Cheap (in-memory), no DB. Public — guests can request it too.
+- **Client** (`onPresence`): fills `#dash-online` / `#dash-rooms`. Requested on
+  home-screen show (`refreshDash`) **and polled every 10s** while the home screen
+  is visible, so the counters tick live as people join/leave the site.
+- **Played-card spread** (bugfix, same batch): the played-card positioning radius
+  is now scaled to the table's real width (was hardcoded 115px, which clustered
+  cards at dead-center on the larger 1080p table → they read as invisible). This
+  hotfix is already on `live`; the rest of the batch is pending.
 
 ### ✅ UI / UX polish
 - **Turn-timer countdown ring**: circular SVG progress around the active player's avatar,
@@ -498,8 +534,8 @@ hand-rolled with `node:crypto`. Postgres/Prisma is the single intentional runtim
 | Branch | Purpose | Status |
 |---|---|---|
 | `main` | Original baseline (initial commit only) | Untouched since first commit |
-| `live` | **Production — deployed on OVH** | **Deployed through the home redesign + Phase 4 + 1080p scaling** (tip `4c9cf34`, promoted 2026-06-26). In sync with `staging` content. |
-| `staging` | Active development + **auto-deploys to staging URL** | Tip `968f58f`. In sync with `live` after the 2026-06-26 promote. |
+| `live` | **Production — deployed on OVH** | Tip `b5712ff` (played-card radius hotfix, promoted 2026-06-26). **Behind `staging`** — the stats-recording fix + live presence counters are not yet promoted. |
+| `staging` | Active development + **auto-deploys to staging URL** | **Ahead of `live`.** Tip `b3d65b7`: stats `$transaction` fix + presence counters. Eyeball `staging.mindikot.com`, then promote (see §4 promote flow). |
 
 **Ship-to-staging flow (automated):** just push — CI does the rest:
 ```bash
@@ -539,11 +575,17 @@ Generate secrets with `openssl rand -base64 32`. See `deploy/.env.example`.
 
 ## 6. Commit history (recent)
 
-> **Branch state:** `staging` and `live` are **in sync** after the 2026-06-26 promote
-> (home redesign + Phase 4 + 1080p scaling). `staging` tip `968f58f`; `live` tip `4c9cf34`
-> (a `--no-ff` promotion commit; `live` otherwise carries promotion merges as artifacts).
+> **Branch state:** `staging` is **ahead** of `live`. `staging` tip `b3d65b7` carries a
+> hotfix batch: the stats-recording `$transaction` fix (`29eb56e`), live presence counters
+> (`79815ec`), and the presence-count fix (`b3d65b7`). `live` tip `b5712ff` has only the
+> played-card radius hotfix (promoted 2026-06-26). The pending batch needs eyeballing on
+> `staging.mindikot.com` before the next promote.
 
 ```
+b3d65b7 fix(home): online count now reflects ALL connected players           [staging]
+79815ec feat(home): live Online Players + Active Rooms counters              [staging]
+29eb56e fix(stats): recordStats $transaction threw on every match            [staging]
+b5712ff hotfix(live): scale played-card radius to table size                 [staging+live]
 968f58f feat(ui): scale game + lobby screens to fill 1080p                   [staging+live]
 9beaa54 fix(ui): stat icon specificity + inline room code row                [staging+live]
 e927f8b fix(ui): left-align + enlarge stat icons; compact the Join button    [staging+live]
@@ -570,12 +612,19 @@ da72974 docs: update PROJECT_STATUS — staging env, auto-deploy CI, trackers  [
 
 ### 🔜 Immediate — next up
 Phases 1–4, Task 7, the home redesign, and the game/lobby 1080p scaling are all
-shipped **and promoted to `live`** (2026-06-26). `staging` and `live` are in sync.
-The next candidate work items:
+shipped **and promoted to `live`** (2026-06-26). A **hotfix batch is on `staging`,
+pending promote** (see §4): the stats-recording `$transaction` fix (production stats
++ leaderboard were silently broken), live Online/Rooms presence counters, and the
+played-card spread fix (the card one is already on `live`). The next steps:
 
-- **Real-device QA pass** on the freshly-promoted production build — sign up, play a
-  full Quick Match against bots, try Create Room + the lobby seat map. The 1080p
-  scaling was eyeballed locally but not yet stress-tested in real multi-player play.
+- **Promote the hotfix batch to `live`** — stats fix (`29eb56e`) + presence
+  (`79815ec`/`b3d65b7`). Eyeball `staging.mindikot.com` first (verify stats update
+  after a match + the Online/Rooms counters tick), then the standard
+  `staging → live` merge + box rebuild. **Priority: prod stats/leaderboard are
+  currently broken**, so this should go up soon.
+- **Real-device QA pass** on the production build — sign up, play a full Quick Match
+  against bots, try Create Room + the lobby seat map. The 1080p scaling was eyeballed
+  locally but not yet stress-tested in real multi-player play.
 - **Mobile/touch polish** for the lobby seat-map (the oval→grid fallback works, but
   tap targets + the claim interaction want a real-device pass) and the new home
   dashboard (the 3-column body collapses to a stacked column, but needs a real-device
@@ -622,19 +671,28 @@ Phases 1–4 are done; these are additive:
 > ✅ **Phase 4: player IDs, emoji avatars, country flags** — shipped, live (see §2).
 > ✅ **Home-screen redesign: premium dashboard (topbar + 3-col body + footer)** — shipped, live (see §2).
 > ✅ **Game + lobby 1080p scaling** — shipped, live (see §2).
+> 🔨 **Live presence counters (Online Players + Active Rooms)** — shipped on `staging`; pending `live` promote (see §2).
+> 🔨 **Stats-recording fix (recordStats $transaction)** — shipped on `staging`; pending `live` promote. **Prod stats/leaderboard are currently broken until this promotes.**
 
 ---
 
 ## 8. Known limitations / TODOs
 
+- **⚠️ Production stats/leaderboard are BROKEN on `live` (fix on `staging`, pending promote):**
+  `recordStats()` threw on every match due to a Prisma `$transaction` contract
+  violation (`.catch()` chained on each array element). So completing a match in
+  production does NOT update personal stats or the leaderboard. **Fixed on `staging`
+  (`29eb56e`)** — verify there, then promote to `live` ASAP.
 - **DEPLOYED & LIVE** at `https://play.mindikot.com` since 2026-06-22. The full
   stack (app + Postgres + LiveKit SFU + Caddy) is running on the OVH VPS
   (`158.69.49.43`). Game, accounts, voice all functional. Apex `mindikot.com`
   redirects to `play.*`. **Staging preview** live at `https://staging.mindikot.com`
   since 2026-06-23 (own throwaway DB, shared SFU, auto-deploys on push).
-- **`staging` and `live` are in sync** as of the 2026-06-26 promote — the home
-  redesign, Phase 4 identity, and game/lobby 1080p scaling are now live in
-  production (`play.*`).
+- **`staging` is ahead of `live`:** a hotfix batch (stats `$transaction` fix, live
+  Online/Rooms presence counters, presence-count fix) is on `staging` and at
+  `staging.mindikot.com`, but **not yet on production** (`play.*`). Only the
+  played-card radius hotfix was promoted (2026-06-26). Needs a QA pass + manual
+  promote (§4).
 - **Apex cert issuance**: on the very first request to `https://mindikot.com`,
   Caddy takes ~10-20s to obtain the Let's Encrypt cert — the browser may show a
   transient "can't provide a secure connection" until it's issued. One-time.

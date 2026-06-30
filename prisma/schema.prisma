@@ -38,8 +38,12 @@ model User {
   country  String?           // 2-letter ISO code, rendered as a flag emoji client-side
   avatar   String?           // emoji from the curated palette (shared/identity.js)
 
-  // Reserved for later phases (added via additive migrations, not yet queried):
-  //   xp, level
+  // Phase 5 — XP + player levels. xp is incremented in GameRoom.recordStats() at
+  // match end (via xpForOutcome). level is derived from xp at read time
+  // (levelFromXp) so it can never drift; also stored for future indexing/ranking.
+  // New signups + existing rows start at 0 xp / level 1.
+  xp    Int @default(0)
+  level Int @default(1)
 
   @@index([email])
   @@index([wins])   // Phase 3 — backs the leaderboard's ORDER BY wins DESC

@@ -10,6 +10,7 @@ import {
   autoPlayPick, teamForSeat, isTen, resolveDeadlock,
 } from "../shared/rules.js";
 import { selectBotPlayCard } from "../shared/bot.js";
+import { xpForOutcome } from "../shared/identity.js";
 import { makeLiveKitToken, voiceConfigured, voiceConfig, voiceRoomName } from "./livekit.js";
 import { getDb } from "./db.js";
 
@@ -42,6 +43,7 @@ function makeSeats() {
     disconnectAt: null,
     country: null,   // Phase 4 — identity (null for bots/guests)
     avatar: null,
+    level: 1,        // Phase 5 — displayed level badge (bots default to 1)
   }));
 }
 
@@ -128,6 +130,7 @@ export class GameRoom {
     seat.timeouts = 0;
     seat.country = (ws && ws.country) || null;   // Phase 4 — cached at seat time
     seat.avatar = (ws && ws.avatar) || null;
+    seat.level = (ws && ws.level) || 1;          // Phase 5 — level badge on the seat
     this.sockets[seatIdx] = ws;
     if (this.hostSeat === null) this.hostSeat = seatIdx;
     this.log.push(`Human joined seat ${seatIdx} (${seat.name})`);
@@ -160,6 +163,7 @@ export class GameRoom {
     target.timeouts = 0;
     target.country = (ws && ws.country) || null;   // Phase 4 — carry identity to the new seat
     target.avatar = (ws && ws.avatar) || null;
+    target.level = (ws && ws.level) || 1;          // Phase 5 — carry level to the new seat
     this.sockets[targetIdx] = ws;
     // If the human was seated elsewhere, revert the old seat to a bot.
     if (oldIdx !== -1 && oldIdx !== targetIdx) {
@@ -286,7 +290,7 @@ export class GameRoom {
   sendLeadSelectEnter(seatIdx) {
     const ws = this.sockets[seatIdx];
     if (!ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ t: "leadSelectEnter", seats: this.seats.map((s) => ({ seat: s.seat, name: s.name, team: s.team, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null })), you: seatIdx, _ts: Date.now() }));
+    ws.send(JSON.stringify({ t: "leadSelectEnter", seats: this.seats.map((s) => ({ seat: s.seat, name: s.name, team: s.team, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null, level: s.level || 1 })), you: seatIdx, _ts: Date.now() }));
   }
 
   // --- turn timer (spec §2.9) ---
@@ -503,7 +507,7 @@ export class GameRoom {
     }, RESOLVE_DELAY_MS);
   }
 
-  endMatch(winningTeam) {
+  async endMatch(winningTeam) {
     this.stopTurnTimer();
     this.clearBot();
     if (this.resolveHandle) { clearTimeout(this.resolveHandle); this.resolveHandle = null; }
@@ -515,6 +519,14 @@ export class GameRoom {
     // deadlock flag = the 12-12 tiebreak path was taken (score tied at match end).
     // Lets the client distinguish a normal 13-Ten win from a tricks-decided win.
     const deadlock = this.score.A === this.score.B;
+    // Credit each authenticated human's lifetime stats BEFORE broadcasting
+    // matchEnd, and await the write. This guarantees the DB has committed the new
+    // XP/level/stats by the time the client reaches the end screen and re-fetches
+    // stats — no stale-data race (previously fire-and-forget, so a refresh could
+    // read pre-match values). Errors are still swallowed so a DB hiccup can't
+    // strand the players on a stuck matchEnd.
+    try { await this.recordStats(winningTeam); }
+    catch (e) { this.log.push(`recordStats failed at matchEnd: ${e && (e.message || e)}`); }
     this.broadcast({
       t: "matchEnd",
       winningTeam,            // "A" | "B" | null (null = draw)
@@ -522,50 +534,60 @@ export class GameRoom {
       deadlock,               // true iff decided by the 12-12 tiebreak (win or draw)
       score: this.score,
       tricksWon: { ...this.tricksWon },
-      seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null })),
+      seats: this.seats.map((s) => ({ name: s.name, seat: s.seat, team: s.team, tens: s.tens, isBot: s.isBot, country: s.country || null, avatar: s.avatar || null, level: s.level || 1 })),
     });
     if (winningTeam === null) {
       this.log.push(`Match ended in a DRAW. Final ${JSON.stringify(this.score)} tricks ${JSON.stringify(this.tricksWon)}.`);
     } else {
-      this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}.`);
+      this.log.push(`Match ended. Winner: team ${winningTeam}. Final ${JSON.stringify(this.score)}. tricks ${JSON.stringify(this.tricksWon)}.`);
     }
-    // Best-effort: credit each authenticated human's lifetime stats. Fire-and-
-    // forget — must NEVER break the match-end flow (no await, errors swallowed).
-    this.recordStats(winningTeam);
   }
 
   // Classify each seat's result given the winning team. Pure — no DB access —
-  // so it's unit-testable without coupling. Exported for tests.
+  // so it's unit-testable without coupling. Exported for tests. Each authenticated
+  // human seat maps to {won, lost, draw, tens, xp} — xp is derived here via
+  // xpForOutcome so the formula stays in one place (shared/identity.js).
   static classifySeats(seats, winningTeam) {
     return seats
       .filter((s) => s.isHuman && s.isAuthenticated && s.sessionId)
       .map((s) => {
         const draw = winningTeam === null;
         const won = !draw && s.team === winningTeam;
+        const tens = s.tens || 0;
         return {
           sessionId: s.sessionId,
           team: s.team,
-          tens: s.tens || 0,
+          tens,
           won,
           lost: !draw && !won,
           draw,
+          xp: xpForOutcome({ won, draw, tens }),   // Phase 5 — XP earned this match
         };
       });
   }
 
   // Record aggregate lifetime stats for every authenticated human. Guests
   // (sessionId with no matching User row) are skipped via a caught P2025. Fail-
-  // soft: no DB → no-op; any error is logged and swallowed.
+  // soft: no DB → no-op; any error is logged and swallowed. Returns a Promise
+  // (resolved immediately on the no-DB / no-humans no-op paths) so the caller
+  // (endMatch) can await it BEFORE broadcasting matchEnd — guaranteeing the new
+  // XP/level are committed before the client re-fetches stats.
   recordStats(winningTeam) {
     const db = getDb();
-    if (!db) return; // accounts not configured — anonymous play only
+    if (!db) return Promise.resolve(); // accounts not configured — anonymous play only
     const updates = GameRoom.classifySeats(this.seats, winningTeam);
-    if (!updates.length) return;   // no authenticated humans — guests are excluded
-    // Fire-and-forget: $transaction needs an array of RAW Prisma promises — do
-    // NOT chain .catch() on each element (that breaks the contract and throws
-    // "All elements of the array need to be Prisma Client promises"). The outer
-    // .catch() handles any rejection so it never reaches the match-end path.
-    db.$transaction(
+    if (!updates.length) return Promise.resolve(); // no authenticated humans — guests excluded
+    // $transaction needs an array of RAW Prisma promises — do NOT chain .catch()
+    // on each element (that breaks the contract and throws "All elements of the
+    // array need to be Prisma Client promises"). Return the promise so the caller
+    // can await; errors propagate to the caller's try/catch (still swallowed there
+    // so a DB hiccup can't strand the match-end flow).
+    //
+    // xp is incremented atomically here. level is derived from xp at READ time
+    // (statsOf → levelFromXp), so it can never drift; we DON'T try to update the
+    // stored level in this $transaction (array transactions can't read-then-write,
+    // and a stale stored level is harmless since displays always derive from xp).
+    return db.$transaction(
       updates.map((u) =>
         db.user.update({
           where: { id: u.sessionId },
@@ -575,12 +597,11 @@ export class GameRoom {
             losses: { increment: u.lost ? 1 : 0 },
             draws: { increment: u.draw ? 1 : 0 },
             tensCaptured: { increment: u.tens },
+            xp: { increment: u.xp },               // Phase 5 — XP earned this match
           },
         })
       )
-    ).catch((e) => {
-      this.log.push(`stats transaction failed: ${e.message || e}`);
-    });
+    );
   }
 
   // Return a FINISHED room to LOBBY for "Play Again": zero all match state but
@@ -697,7 +718,7 @@ export class GameRoom {
       seats: this.seats.map((s) => ({
         seat: s.seat, team: s.team, name: s.name, isBot: s.isBot,
         isConnected: s.isConnected, ready: s.ready,
-        country: s.country || null, avatar: s.avatar || null,
+        country: s.country || null, avatar: s.avatar || null, level: s.level || 1,
       })),
     };
     this.broadcast(lobby);
@@ -752,7 +773,7 @@ export class GameRoom {
       you: seatIdx,
       seats: this.seats.map((s) => ({
         seat: s.seat, team: s.team, name: s.name, isBot: s.isBot, cardsLeft: s.cardsLeft,
-        country: s.country || null, avatar: s.avatar || null,
+        country: s.country || null, avatar: s.avatar || null, level: s.level || 1,
       })),
       hand: this.seats[seatIdx].hand.map((c) => this.cardView(c)),
       kittySize: KITTY_SIZE,

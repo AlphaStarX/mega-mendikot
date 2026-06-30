@@ -45,5 +45,27 @@ window.IDENTITY = (function () {
     );
   }
 
-  return { AVATAR_OPTIONS, AVATAR_SET, COUNTRY_OPTIONS, flagEmoji };
+  // --- Phase 5: XP + levels. Mirror of shared/identity.js. ---
+  // Level curve: reaching level L needs cumulative XP = 100*L*(L-1).
+  function xpToReachLevel(level) {
+    const L = Math.max(1, Math.floor(level));
+    return 100 * L * (L - 1);
+  }
+  function levelFromXp(totalXp) {
+    const xp = Math.max(0, Number.isFinite(totalXp) ? Math.floor(totalXp) : 0);
+    let level = Math.ceil((1 + Math.sqrt(1 + xp / 25)) / 2);
+    while (level > 1 && 100 * level * (level - 1) > xp) level--;
+    while (100 * (level + 1) * level <= xp) level++;
+    return Math.max(1, level);
+  }
+  // Powers the Profile XP bar: { level, floor, ceil, into, span }.
+  function xpProgress(totalXp) {
+    const xp = Math.max(0, Number.isFinite(totalXp) ? Math.floor(totalXp) : 0);
+    const level = levelFromXp(xp);
+    const floor = xpToReachLevel(level);
+    const ceil = xpToReachLevel(level + 1);
+    return { level, floor, ceil, into: xp - floor, span: ceil - floor };
+  }
+
+  return { AVATAR_OPTIONS, AVATAR_SET, COUNTRY_OPTIONS, flagEmoji, levelFromXp, xpToReachLevel, xpProgress };
 })();

@@ -437,10 +437,12 @@ test("classifySeats: Team A wins -> A humans won, B humans lost", () => {
   assert.equal(out[0].lost, false);
   assert.equal(out[0].draw, false);
   assert.equal(out[0].tens, 3);
+  assert.equal(out[0].xp, 115, "winner with 3 tens: 100 + 15");  // Phase 5
   assert.equal(out[1].sessionId, "u2");
   assert.equal(out[1].won, false);
   assert.equal(out[1].lost, true, "B human lost");
   assert.equal(out[1].draw, false);
+  assert.equal(out[1].xp, 20, "loser with 1 ten: 15 + 5");        // Phase 5
 });
 
 test("classifySeats: winningTeam null -> everyone draws", () => {
@@ -452,6 +454,7 @@ test("classifySeats: winningTeam null -> everyone draws", () => {
   assert.equal(out.length, 2);
   assert.equal(out.every((u) => u.draw), true, "both draws");
   assert.equal(out.every((u) => !u.won && !u.lost), true, "no win/loss on a draw");
+  assert.equal(out.every((u) => u.xp === 50), true, "draw with 2 tens: 40 + 10");  // Phase 5
 });
 
 test("classifySeats: guests (unauthenticated) and bots are skipped", () => {

@@ -20,7 +20,7 @@ import {
 import { getDb, closeDb } from "./db.js";
 import { debugAllowed } from "./debug-gate.js";
 import { computeLeaderboardRows, LEADERBOARD_MAX_ROWS } from "./leaderboard.js";
-import { generatePlayerId, isValidCountry, isValidAvatar } from "../shared/identity.js";
+import { generatePlayerId, isValidCountry, isValidAvatar, levelFromXp } from "../shared/identity.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIR = join(__dirname, "..", "client");
@@ -385,7 +385,7 @@ function handleMessage(ws, msg) {
           where: { matchesPlayed: { gt: 0 } },
           orderBy: { wins: "desc" },
           take: LEADERBOARD_MAX_ROWS,
-          select: { id: true, displayName: true, wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true, country: true, avatar: true },
+          select: { id: true, displayName: true, wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true, xp: true, country: true, avatar: true },
         })
           .then((users) => send(ws, { t: "leaderboard", rows: computeLeaderboardRows(users) }))
           .catch((e) => { console.error("getLeaderboard error:", e); send(ws, { t: "leaderboard", rows: null }); });
@@ -415,15 +415,18 @@ function handleMessage(ws, msg) {
 
 // The 5 aggregate stat fields on User (Phase 2). Used wherever we read a user
 // for auth/identity so stats ride along without a second query.
-const STATS_FIELDS = { wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true };
+const STATS_FIELDS = { wins: true, losses: true, draws: true, matchesPlayed: true, tensCaptured: true, xp: true, level: true };
 function statsOf(user) {
   if (!user) return null;
+  const xp = user.xp || 0;
   return {
     wins: user.wins || 0,
     losses: user.losses || 0,
     draws: user.draws || 0,
     matchesPlayed: user.matchesPlayed || 0,
     tensCaptured: user.tensCaptured || 0,
+    xp,                                   // Phase 5 — cumulative XP
+    level: levelFromXp(xp),               // Phase 5 — derived from xp so it never drifts
   };
 }
 
@@ -434,6 +437,7 @@ function authReplyOk(ws, user) {
   ws.authenticated = true;
   ws.country = user.country || null;   // cached for seat display (Phase 4)
   ws.avatar = user.avatar || null;
+  ws.level = levelFromXp(user.xp || 0); // cached for the in-game/lobby level badge (Phase 5)
   send(ws, {
     t: "authOk", token, userId: user.id, name: user.displayName,
     stats: statsOf(user),
@@ -539,6 +543,7 @@ function handleAuthenticate(ws, msg) {
       ws.userName = user.displayName;
       ws.country = user.country || null;   // cached for seat display (Phase 4)
       ws.avatar = user.avatar || null;
+      ws.level = levelFromXp(user.xp || 0); // cached for the in-game/lobby level badge (Phase 5)
       ws.authenticated = true;
       send(ws, {
         t: "authOk", token, userId: user.id, name: user.displayName, stats: statsOf(user),
@@ -551,6 +556,9 @@ function handleAuthenticate(ws, msg) {
 function handleLogout(ws) {
   ws.userId = null;
   ws.userName = null;
+  ws.country = null;   // clear cached seat identity (Phase 4)
+  ws.avatar = null;
+  ws.level = null;     // clear cached level badge (Phase 5)
   ws.authenticated = false;
   send(ws, { t: "loggedOut" });
 }
