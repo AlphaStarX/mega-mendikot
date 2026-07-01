@@ -643,10 +643,12 @@ function replyFriends(ws) {
   if (!db || !ws.authenticated || !ws.userId) { send(ws, { t: "friends", list: [], requests: [] }); return; }
   db.user.findUnique({
     where: { id: ws.userId },
-    // accepted edges where I'm either side + pending requests I RECEIVED
+    // accepted edges where I'm either side + pending requests I RECEIVED.
+    // NOTE: under `include`, a nested relation must be { select: {...} }, not a
+    // bare { id:true, ... } object (Prisma rejects the bare form as invalid).
     select: {
-      outgoing: { where: { status: "accepted" }, include: { friend: FRIEND_USER_SELECT } },
-      incoming: { include: { user: FRIEND_USER_SELECT } },
+      outgoing: { where: { status: "accepted" }, include: { friend: { select: FRIEND_USER_SELECT } } },
+      incoming: { include: { user: { select: FRIEND_USER_SELECT } } },
     },
   })
     .then((me) => {
