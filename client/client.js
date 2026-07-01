@@ -94,6 +94,10 @@ const state = {
   stats: null,         // { wins, losses, draws, matchesPlayed, tensCaptured, xp, level } | null
   // --- leaderboard (Phase 3) ---
   leaderboard: null,   // [{ rank, name, wins, losses, draws, matchesPlayed, winRate, id }] | null
+  // --- friends (Phase 6) ---
+  friends: null,            // [{ userId, name, playerId, avatar, country, level, online }] | null
+  friendRequests: null,     // [{ userId, name, playerId, avatar, country, level, online }] | null
+  pendingInvite: null,      // a { from, room, roomName } shown in the invite modal
   // --- player identity (Phase 4) ---
   playerId: null,      // shareable code (#A4F2K), or null
   country: null,       // 2-letter ISO code, or null
@@ -259,6 +263,14 @@ function handle(m) {
     case "voiceState": onVoiceState(m); break;
     case "lobbyVoice": offerVoice({ voiceUrl: m.voiceUrl, voiceRoom: m.voiceRoom, voiceToken: m.voiceToken }); break;
     case "error": showMsg(m.message); break;
+    // Phase 6 — friends
+    case "friends": onFriends(m); break;
+    case "friendAdded": onFriendAdded(m); break;
+    case "friendError": onFriendError(m); break;
+    case "friendRequest": onFriendRequest(m); break;
+    case "friendAccepted": onFriendAccepted(m); break;
+    case "friendInvite": onFriendInvite(m); break;
+    case "friendInviteSent": onFriendInviteSent(m); break;
   }
 }
 
@@ -378,6 +390,140 @@ function onPresence(m) {
   if (rooms) rooms.textContent = (m && typeof m.activeRooms === "number") ? m.activeRooms : "—";
 }
 
+// ---------- friends (Phase 6) ----------
+// Map the server's friendError codes to human messages for the add-by-id box.
+const FRIEND_ERRORS = {
+  invalidId: "Not a valid ID (5 letters/digits, e.g. A4F2K).",
+  notFound: "No player found with that ID.",
+  self: "You can't add yourself!",
+  alreadyFriends: "You're already friends.",
+  pending: "A request is already pending with that player.",
+  notAuthenticated: "Log in to use friends.",
+  notInRoom: "Join or create a private room first.",
+  notFriends: "You can only invite friends.",
+  server: "Something went wrong. Try again.",
+};
+
+function onFriends(m) {
+  state.friends = Array.isArray(m && m.list) ? m.list : [];
+  state.friendRequests = Array.isArray(m && m.requests) ? m.requests : [];
+  // Re-render if the friends screen is visible.
+  if (!$("friends-screen").classList.contains("hidden")) renderFriends();
+  // Update the nav-item badge for incoming requests.
+  updateFriendsBadge();
+}
+
+function onFriendAdded(m) {
+  const msg = $("friend-add-msg");
+  if (msg) { msg.textContent = "Request sent!"; msg.className = "hint ok"; }
+}
+
+function onFriendError(m) {
+  const msg = $("friend-add-msg");
+  if (msg) { msg.textContent = FRIEND_ERRORS[(m && m.error) || "server"] || "Something went wrong."; msg.className = "hint err"; }
+}
+
+// A friend request just arrived (live push from another player). Toast + refresh
+// the badge; re-render the friends screen if it's open.
+function onFriendRequest(m) {
+  const name = (m && m.from && m.from.name) || "Someone";
+  showMsg(`${name} wants to be your friend!`);
+  // Pull a fresh list so the request appears.
+  if (state.ws && state.ws.readyState === 1) send({ t: "getFriends" });
+}
+
+// My request was accepted. Toast + refresh my list.
+function onFriendAccepted(m) {
+  const name = (m && m.from && m.from.name) || "Someone";
+  showMsg(`${name} accepted your friend request!`);
+  if (state.ws && state.ws.readyState === 1) send({ t: "getFriends" });
+}
+
+// A friend invited me to their room. Show the invite modal.
+function onFriendInvite(m) {
+  if (!m || !m.from || !m.room) return;
+  state.pendingInvite = { from: m.from, room: m.room, roomName: m.roomName || `Room ${m.room}` };
+  showInviteModal();
+}
+
+function onFriendInviteSent(m) {
+  showMsg(m && m.delivered ? "Invite sent!" : "Invite sent (friend is offline — they'll need the code).");
+}
+
+// Light up the Friends nav item with a count of pending incoming requests.
+function updateFriendsBadge() {
+  const badge = $("friends-req-count");
+  const n = Array.isArray(state.friendRequests) ? state.friendRequests.length : 0;
+  if (!badge) return;
+  if (n > 0) { badge.textContent = String(n); badge.classList.remove("hidden"); }
+  else badge.classList.add("hidden");
+}
+
+// Show the incoming-invite modal from state.pendingInvite.
+function showInviteModal() {
+  const modal = $("invite-modal");
+  const text = $("invite-modal-text");
+  if (!modal || !state.pendingInvite) return;
+  const f = state.pendingInvite.from;
+  const name = (f && f.name) || "A player";
+  if (text) text.textContent = `${name} invited you to ${state.pendingInvite.roomName}. Join them?`;
+  modal.classList.remove("hidden");
+}
+function hideInviteModal() {
+  const modal = $("invite-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+// Render the friends screen: incoming requests (Accept/Decline) + my friends
+// (online dot, level badge, invite-to-room + remove). Mirrors renderLeaderboard.
+function renderFriends() {
+  const reqEl = $("friends-requests");
+  const listEl = $("friends-list");
+  const reqCount = $("friends-req-count");
+  const listCount = $("friends-count");
+
+  // Requests
+  const reqs = Array.isArray(state.friendRequests) ? state.friendRequests : [];
+  if (reqCount) { reqCount.textContent = String(reqs.length); reqCount.classList.toggle("hidden", reqs.length === 0); }
+  if (reqEl) {
+    reqEl.innerHTML = reqs.length === 0
+      ? `<div class="friends-empty">No pending requests.</div>`
+      : reqs.map((f) => friendRowHtml(f, true)).join("");
+  }
+
+  // Friends
+  const friends = Array.isArray(state.friends) ? state.friends : [];
+  if (listCount) listCount.textContent = String(friends.length);
+  if (listEl) {
+    listEl.innerHTML = friends.length === 0
+      ? `<div class="friends-empty">No friends yet — add one by their ID above!</div>`
+      : friends.map((f) => friendRowHtml(f, false)).join("");
+  }
+}
+
+// One friend row. isRequest=true renders Accept/Decline; else online dot + Invite + Remove.
+function friendRowHtml(f, isRequest) {
+  const flag = f.country ? window.IDENTITY.flagEmoji(f.country) + " " : "";
+  const av = f.avatar ? `<span class="friend-av">${f.avatar}</span>` : `<span class="friend-av emoji">${(escapeHtml(f.name) || "?").charAt(0).toUpperCase()}</span>`;
+  if (isRequest) {
+    return `<div class="friend-row">${av}<span class="friend-name">${flag}${escapeHtml(f.name)} ${levelBadgeHtml(f.level)}</span>` +
+      `<span class="friend-actions">` +
+      `<button class="friend-accept" data-accept="${f.userId}">Accept</button>` +
+      `<button class="friend-decline" data-decline="${f.userId}">Decline</button>` +
+      `</span></div>`;
+  }
+  const dot = `<span class="friend-dot ${f.online ? "on" : "off"}" title="${f.online ? "Online" : "Offline"}"></span>`;
+  // Show "Invite" when the player has an active private room they're in the lobby
+  // of (state.room set). Note: we do NOT require the lobby screen to be *visible*
+  // — the player reached this Friends screen BY clicking "Invite a Friend" from the
+  // lobby, so the lobby is now hidden behind it, but the room is still active.
+  const canInvite = f.online && state.room;
+  const inviteBtn = canInvite ? `<button class="friend-invite" data-invite="${f.userId}">Invite</button>` : "";
+  return `<div class="friend-row">${av}${dot}<span class="friend-name">${flag}${escapeHtml(f.name)} ${levelBadgeHtml(f.level)}</span>` +
+    `<span class="friend-id">${f.playerId ? "#" + f.playerId : ""}</span>` +
+    `<span class="friend-actions">${inviteBtn}<button class="friend-remove" data-remove="${f.userId}">Remove</button></span></div>`;
+}
+
 // Render the leaderboard from state.leaderboard. Handles null (DB unavailable),
 // empty (no one has played yet), and highlights the current user's row.
 function renderLeaderboard() {
@@ -484,6 +630,10 @@ function onLobbyUpdate(m) {
   const isHost = state.you === m.hostSeat;
   $("lobby-start-btn").classList.toggle("hidden", !isHost);
   $("lobby-waiting").classList.toggle("hidden", isHost);
+  // Phase 6 — "Invite a Friend" shows for authenticated players in a private
+  // room (guests can't friend/invite; quick-match rooms don't share a code).
+  const inviteBtn = $("lobby-invite-btn");
+  if (inviteBtn) inviteBtn.classList.toggle("hidden", !(state.authenticated && m.privateRoom));
 }
 
 // Render the lobby as a 10-seat clickable table map. Seats are placed around an
@@ -927,7 +1077,7 @@ function onMatchEnd(m) {
 
 // ---------- rendering ----------
 function showScreen(id) {
-  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen", "leaderboard-screen"].forEach((s) => $(s).classList.add("hidden"));
+  ["join-screen", "auth-screen", "lobby-screen", "game-screen", "end-screen", "profile-screen", "leaderboard-screen", "friends-screen"].forEach((s) => $(s).classList.add("hidden"));
   $(id).classList.remove("hidden");
   // The in-match "?" help button is only relevant while playing.
   const help = $("game-help-btn");
@@ -975,6 +1125,11 @@ function refreshAuthUI() {
   // The Profile/Stats button is only for authenticated users.
   const profileBtn = $("profile-btn");
   if (profileBtn) profileBtn.classList.toggle("hidden", !state.authenticated);
+  // Phase 6 — the Friends button + nav item are auth-gated too (guests can't friend).
+  const friendsBtn = $("friends-btn");
+  if (friendsBtn) friendsBtn.classList.toggle("hidden", !state.authenticated);
+  const navFriends = $("nav-friends");
+  if (navFriends) navFriends.classList.toggle("hidden", !state.authenticated);
 }
 
 // ---------- player stats rendering (Phase 2) ----------
@@ -1592,7 +1747,7 @@ if (dashNav) {
     const action = item.getAttribute("data-action");
     const target = {
       quick: "quick-btn", create: "create-btn", howto: "howto-btn",
-      profile: "profile-btn", leaderboard: "leaderboard-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn", friends: "friends-btn",
     }[action];
     // Highlight the clicked item + dispatch.
     dashNav.querySelectorAll(".dash-nav-item").forEach((el) => el.classList.remove("active"));
@@ -1612,7 +1767,7 @@ if (dashActionsHost) {
     const action = item.getAttribute("data-action");
     const target = {
       quick: "quick-btn", create: "create-btn", howto: "howto-btn",
-      profile: "profile-btn", leaderboard: "leaderboard-btn",
+      profile: "profile-btn", leaderboard: "leaderboard-btn", friends: "friends-btn",
     }[action];
     const btn = target && $(target);
     if (btn) btn.click();
@@ -1704,6 +1859,83 @@ const profileBackBtn = $("profile-back-btn");
 if (profileBackBtn) {
   profileBackBtn.addEventListener("click", () => showScreen("join-screen"));
 }
+
+// --- Friends (Phase 6) ---
+// Auth-gated: the friends-btn + nav item are hidden for guests (refreshAuthUI
+// toggles them, same as profile-btn). Mirrors the profile/leaderboard pattern.
+const friendsBtn = $("friends-btn");
+if (friendsBtn) {
+  friendsBtn.addEventListener("click", () => {
+    send({ t: "getFriends" });
+    renderFriends();
+    showScreen("friends-screen");
+  });
+}
+const friendsBackBtn = $("friends-back-btn");
+if (friendsBackBtn) friendsBackBtn.addEventListener("click", () => showScreen("join-screen"));
+
+// Add a friend by their player ID (normalize via the shared helper, which strips
+// a leading '#', uppercases, and rejects invalid codes).
+const friendIdInput = $("friend-id-input");
+const friendAddBtn = $("friend-add-btn");
+function submitAddFriend() {
+  if (!friendIdInput) return;
+  const raw = friendIdInput.value;
+  const pid = window.IDENTITY.normalizePlayerId(raw);
+  const msg = $("friend-add-msg");
+  if (!pid) { if (msg) { msg.textContent = "Enter a valid 5-char ID (e.g. A4F2K)."; msg.className = "hint err"; } return; }
+  if (msg) msg.textContent = "";
+  send({ t: "addFriend", playerId: pid });
+  friendIdInput.value = "";
+}
+if (friendAddBtn) friendAddBtn.addEventListener("click", submitAddFriend);
+if (friendIdInput) friendIdInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitAddFriend(); });
+
+// Delegated clicks on the friends list (accept / decline / invite / remove).
+// One listener handles both the requests list and the friends list.
+const friendsScreen = $("friends-screen");
+if (friendsScreen) {
+  friendsScreen.addEventListener("click", (e) => {
+    const acc = e.target.closest("[data-accept]");
+    const dec = e.target.closest("[data-decline]");
+    const inv = e.target.closest("[data-invite]");
+    const rem = e.target.closest("[data-remove]");
+    if (acc) { send({ t: "acceptFriend", userId: acc.getAttribute("data-accept") }); return; }
+    if (dec) { send({ t: "declineFriend", userId: dec.getAttribute("data-decline") }); return; }
+    if (inv) { send({ t: "inviteFriend", userId: inv.getAttribute("data-invite") }); return; }
+    if (rem) {
+      const id = rem.getAttribute("data-remove");
+      if (confirm("Remove this friend?")) send({ t: "removeFriend", userId: id });
+      return;
+    }
+  });
+}
+
+// Lobby "Invite a Friend" — re-fetch the friends list (for fresh online status)
+// then open the friends screen so the player can pick who to invite.
+const lobbyInviteBtn = $("lobby-invite-btn");
+if (lobbyInviteBtn) {
+  lobbyInviteBtn.addEventListener("click", () => {
+    send({ t: "getFriends" });
+    renderFriends();
+    showScreen("friends-screen");
+  });
+}
+
+// Incoming-invite modal: Accept joins the room via the existing join-by-code
+// path; Decline just hides it.
+$("invite-accept-btn").addEventListener("click", () => {
+  const inv = state.pendingInvite;
+  hideInviteModal();
+  if (inv && inv.room) {
+    // Reuse the private-room join path (connect + sendJoin with mode "private").
+    disconnectVoice();
+    resetMatchState();
+    connect(getName(), { mode: "private", roomId: inv.room });
+    state.pendingInvite = null;
+  }
+});
+$("invite-decline-btn").addEventListener("click", () => { hideInviteModal(); state.pendingInvite = null; });
 
 // --- Leaderboard (Phase 3) ---
 // Public — anyone can view. Fetch the latest top players then show the screen.

@@ -7,6 +7,7 @@ import {
   COUNTRY_OPTIONS, AVATAR_OPTIONS, AVATAR_SET, PLAYER_ID_ALPHABET, PLAYER_ID_LENGTH,
   xpForOutcome, levelFromXp, xpToReachLevel, xpProgress,
   XP_PER_WIN, XP_PER_DRAW, XP_PER_LOSS, XP_PER_TEN,
+  normalizePlayerId,
 } from "../shared/identity.js";
 
 // --- flagEmoji ---
@@ -167,4 +168,27 @@ test("xpProgress: 0 XP -> level 1, full span to next", () => {
   assert.equal(p.level, 1);
   assert.equal(p.into, 0);
   assert.equal(p.span, 200);
+});
+
+// --- Phase 6: normalizePlayerId ---
+test("normalizePlayerId: strips leading #, trims, uppercases", () => {
+  assert.equal(normalizePlayerId("#a4f2k"), "A4F2K");
+  assert.equal(normalizePlayerId("  #a4f2k  "), "A4F2K");
+  assert.equal(normalizePlayerId("a4f2k"), "A4F2K");
+  assert.equal(normalizePlayerId("A4F2K"), "A4F2K");
+});
+test("normalizePlayerId: rejects wrong length / bad chars / non-strings", () => {
+  assert.equal(normalizePlayerId(""), "");
+  assert.equal(normalizePlayerId("ABC"), "");            // too short
+  assert.equal(normalizePlayerId("ABCDEF"), "");         // too long
+  assert.equal(normalizePlayerId("ABC1I"), "");          // ambiguous chars (1, I) not in alphabet
+  assert.equal(normalizePlayerId("ABC D"), "");          // embedded whitespace
+  assert.equal(normalizePlayerId(null), "");
+  assert.equal(normalizePlayerId(undefined), "");
+  assert.equal(normalizePlayerId(12345), "");
+});
+test("normalizePlayerId: accepts every char in the alphabet at the right length", () => {
+  // build a valid 5-char code from the alphabet and round-trip it
+  const code = PLAYER_ID_ALPHABET.slice(0, PLAYER_ID_LENGTH); // "ABCDE"
+  assert.equal(normalizePlayerId(code.toLowerCase()), code);
 });
