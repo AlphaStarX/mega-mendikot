@@ -513,8 +513,11 @@ function friendRowHtml(f, isRequest) {
       `</span></div>`;
   }
   const dot = `<span class="friend-dot ${f.online ? "on" : "off"}" title="${f.online ? "Online" : "Offline"}"></span>`;
-  // Show "Invite" only when the player is in a private-room lobby (state.room set, lobby visible).
-  const canInvite = f.online && state.room && !$("lobby-screen").classList.contains("hidden");
+  // Show "Invite" when the player has an active private room they're in the lobby
+  // of (state.room set). Note: we do NOT require the lobby screen to be *visible*
+  // — the player reached this Friends screen BY clicking "Invite a Friend" from the
+  // lobby, so the lobby is now hidden behind it, but the room is still active.
+  const canInvite = f.online && state.room;
   const inviteBtn = canInvite ? `<button class="friend-invite" data-invite="${f.userId}">Invite</button>` : "";
   return `<div class="friend-row">${av}${dot}<span class="friend-name">${flag}${escapeHtml(f.name)} ${levelBadgeHtml(f.level)}</span>` +
     `<span class="friend-id">${f.playerId ? "#" + f.playerId : ""}</span>` +
